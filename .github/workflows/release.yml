@@ -76,9 +76,10 @@ jobs:
 
       - name: Collect artifacts (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
           mkdir -p release
-          cp src-tauri/target/release/bundle/nsis/*.exe release/ 2>/dev/null || true
+          Copy-Item src-tauri/target/release/bundle/nsis/*.exe release/ -ErrorAction SilentlyContinue
           cd release
           Get-ChildItem | ForEach-Object { Rename-Item $_ "${{ matrix.artifact }}_$($_.Name -replace 'apistress_','')" }
 
