@@ -10,28 +10,27 @@
     <template v-if="canHaveChildren()">
       <div class="menu-item has-sub" @mouseenter="addSamplerOpen = true" @mouseleave="addSamplerOpen = false">
         <span class="menu-label">Add Sampler</span>
-        <span class="menu-arrow">▶</span>
+        <span class="menu-arrow">&#9654;</span>
         <div v-show="addSamplerOpen" class="submenu">
-          <div class="menu-item" @click="addHttpSampler()">
-            <span class="menu-label">HTTP Request</span>
-          </div>
+          <div class="menu-item" @click="addHttpSampler()">HTTP Request</div>
         </div>
       </div>
 
       <div class="menu-item has-sub" @mouseenter="addControllerOpen = true" @mouseleave="addControllerOpen = false">
         <span class="menu-label">Add Controller</span>
-        <span class="menu-arrow">▶</span>
+        <span class="menu-arrow">&#9654;</span>
         <div v-show="addControllerOpen" class="submenu">
           <div class="menu-item" @click="addLoopController()">Loop Controller</div>
           <div class="menu-item" @click="addIfController()">If Controller</div>
           <div class="menu-item" @click="addWhileController()">While Controller</div>
           <div class="menu-item" @click="addTransactionController()">Transaction Controller</div>
+          <div class="menu-item" @click="addThroughputController()">Throughput Controller</div>
         </div>
       </div>
 
       <div class="menu-item has-sub" @mouseenter="addAssertionOpen = true" @mouseleave="addAssertionOpen = false">
         <span class="menu-label">Add Assertion</span>
-        <span class="menu-arrow">▶</span>
+        <span class="menu-arrow">&#9654;</span>
         <div v-show="addAssertionOpen" class="submenu">
           <div class="menu-item" @click="addResponseAssertion()">Response Assertion</div>
           <div class="menu-item" @click="addJsonAssertion()">JSON Assertion</div>
@@ -41,9 +40,32 @@
 
       <div class="menu-item has-sub" @mouseenter="addTimerOpen = true" @mouseleave="addTimerOpen = false">
         <span class="menu-label">Add Timer</span>
-        <span class="menu-arrow">▶</span>
+        <span class="menu-arrow">&#9654;</span>
         <div v-show="addTimerOpen" class="submenu">
           <div class="menu-item" @click="addConstantTimer()">Constant Timer</div>
+          <div class="menu-item" @click="addUniformRandomTimer()">Uniform Random Timer</div>
+          <div class="menu-item" @click="addGaussianRandomTimer()">Gaussian Random Timer</div>
+        </div>
+      </div>
+
+      <div class="menu-item has-sub" @mouseenter="addExtractorOpen = true" @mouseleave="addExtractorOpen = false">
+        <span class="menu-label">Add Extractor</span>
+        <span class="menu-arrow">&#9654;</span>
+        <div v-show="addExtractorOpen" class="submenu">
+          <div class="menu-item" @click="addRegexExtractor()">Regex Extractor</div>
+          <div class="menu-item" @click="addJsonExtractor()">JSON Extractor</div>
+          <div class="menu-item" @click="addBoundaryExtractor()">Boundary Extractor</div>
+        </div>
+      </div>
+
+      <div class="menu-item has-sub" @mouseenter="addConfigOpen = true" @mouseleave="addConfigOpen = false">
+        <span class="menu-label">Add Config</span>
+        <span class="menu-arrow">&#9654;</span>
+        <div v-show="addConfigOpen" class="submenu">
+          <div class="menu-item" @click="addHttpDefaults()">HTTP Request Defaults</div>
+          <div class="menu-item" @click="addCsvDataSet()">CSV Data Set Config</div>
+          <div class="menu-item" @click="addUserVariables()">User Defined Variables</div>
+          <div class="menu-item" @click="addUserParameters()">User Parameters</div>
         </div>
       </div>
 
@@ -74,10 +96,20 @@ import {
   createDefaultIfController,
   createDefaultWhileController,
   createDefaultTransactionController,
+  createDefaultThroughputController,
   createDefaultConstantTimer,
+  createDefaultUniformRandomTimer,
+  createDefaultGaussianRandomTimer,
   createDefaultResponseAssertion,
   createDefaultJsonAssertion,
   createDefaultDurationAssertion,
+  createDefaultRegexExtractor,
+  createDefaultJsonExtractor,
+  createDefaultBoundaryExtractor,
+  createDefaultHttpDefaults,
+  createDefaultCsvDataSet,
+  createDefaultUserVariables,
+  createDefaultUserParameters,
 } from '@/types'
 
 const props = defineProps<{
@@ -96,6 +128,8 @@ const addSamplerOpen = ref(false)
 const addControllerOpen = ref(false)
 const addAssertionOpen = ref(false)
 const addTimerOpen = ref(false)
+const addExtractorOpen = ref(false)
+const addConfigOpen = ref(false)
 
 function close() {
   emit('close')
@@ -116,7 +150,6 @@ function newElement(element: ChildElement): ChildElement {
 function addHttpSampler() {
   addElement(newElement(createDefaultHttpSampler('')) as unknown as ChildElement)
 }
-
 function addLoopController() {
   addElement(newElement(createDefaultLoopController('')) as unknown as ChildElement)
 }
@@ -129,7 +162,9 @@ function addWhileController() {
 function addTransactionController() {
   addElement(newElement(createDefaultTransactionController('')) as unknown as ChildElement)
 }
-
+function addThroughputController() {
+  addElement(newElement(createDefaultThroughputController('')) as unknown as ChildElement)
+}
 function addResponseAssertion() {
   addElement(newElement(createDefaultResponseAssertion('')) as unknown as ChildElement)
 }
@@ -139,9 +174,35 @@ function addJsonAssertion() {
 function addDurationAssertion() {
   addElement(newElement(createDefaultDurationAssertion('')) as unknown as ChildElement)
 }
-
 function addConstantTimer() {
   addElement(newElement(createDefaultConstantTimer('')) as unknown as ChildElement)
+}
+function addUniformRandomTimer() {
+  addElement(newElement(createDefaultUniformRandomTimer('')) as unknown as ChildElement)
+}
+function addGaussianRandomTimer() {
+  addElement(newElement(createDefaultGaussianRandomTimer('')) as unknown as ChildElement)
+}
+function addRegexExtractor() {
+  addElement(newElement(createDefaultRegexExtractor('')) as unknown as ChildElement)
+}
+function addJsonExtractor() {
+  addElement(newElement(createDefaultJsonExtractor('')) as unknown as ChildElement)
+}
+function addBoundaryExtractor() {
+  addElement(newElement(createDefaultBoundaryExtractor('')) as unknown as ChildElement)
+}
+function addHttpDefaults() {
+  addElement(newElement(createDefaultHttpDefaults('')) as unknown as ChildElement)
+}
+function addCsvDataSet() {
+  addElement(newElement(createDefaultCsvDataSet('')) as unknown as ChildElement)
+}
+function addUserVariables() {
+  addElement(newElement(createDefaultUserVariables('')) as unknown as ChildElement)
+}
+function addUserParameters() {
+  addElement(newElement(createDefaultUserParameters('')) as unknown as ChildElement)
 }
 
 function removeNode() {

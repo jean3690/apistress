@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use super::plan::ChildElement;
+use super::sampler;
 
 /// What to do after evaluating a controller
 pub enum ControllerAction {
@@ -14,10 +15,13 @@ pub enum ControllerAction {
 
 /// Evaluate a controller and decide what action to take.
 /// `loop_counts` tracks per-controller iteration counts.
+/// `throughput_times` tracks last execution instant for ThroughputControllers.
+#[must_use]
 pub fn evaluate_controller(
     child: &ChildElement,
     loop_counts: &mut HashMap<String, u32>,
     variables: &HashMap<String, String>,
+    throughput_times: &mut HashMap<String, std::time::Instant>,
 ) -> ControllerAction {
     match child {
         ChildElement::LoopController(lc) => {
@@ -35,10 +39,8 @@ pub fn evaluate_controller(
             if !ic.enabled {
                 return ControllerAction::Skip;
             }
-            let condition = interpolate_vars(&ic.condition, variables);
-            let is_true = !condition.is_empty()
-                && condition != "false"
-                && condition != "0";
+            let condition = sampler::interpolate(&ic.condition, variables);
+            let is_true = !condition.is_empty() && condition != "false" && condition != "0";
             if is_true {
                 ControllerAction::Execute(ic.children.clone())
             } else {
@@ -49,10 +51,8 @@ pub fn evaluate_controller(
             if !wc.enabled {
                 return ControllerAction::Skip;
             }
-            let condition = interpolate_vars(&wc.condition, variables);
-            let is_true = !condition.is_empty()
-                && condition != "false"
-                && condition != "0";
+            let condition = sampler::interpolate(&wc.condition, variables);
+            let is_true = !condition.is_empty() && condition != "false" && condition != "0";
             if is_true {
                 ControllerAction::Execute(wc.children.clone())
             } else {
@@ -69,12 +69,18 @@ pub fn evaluate_controller(
             if !tc.enabled {
                 return ControllerAction::Skip;
             }
-            let count = loop_counts.entry(tc.id.clone()).or_insert(0);
-            *count += 1;
-            let max_per_min = tc.throughput.max(1) as u64;
-            // Simple throttling: execute once every N calls
-            let interval = (60u64).div_ceil(max_per_min).max(1);
-            if *count as u64 % interval == 0 {
+            if tc.throughput == 0 {
+                return ControllerAction::Skip;
+            }
+            // Time-based throttling
+            let interval_ms = (60_000u64).div_ceil(tc.throughput.max(1) as u64);
+            let now = std::time::Instant::now();
+            let last = throughput_times.entry(tc.id.clone()).or_insert_with(|| {
+                // First time: allow immediate execution but record start
+                now
+            });
+            if now.duration_since(*last).as_millis() as u64 >= interval_ms {
+                *last = now;
                 ControllerAction::Execute(tc.children.clone())
             } else {
                 ControllerAction::Skip
@@ -82,12 +88,4 @@ pub fn evaluate_controller(
         }
         _ => ControllerAction::Skip,
     }
-}
-
-fn interpolate_vars(template: &str, variables: &HashMap<String, String>) -> String {
-    let mut result = template.to_string();
-    for (key, value) in variables {
-        result = result.replace(&format!("{{{{{}}}}}", key), value);
-    }
-    result
 }

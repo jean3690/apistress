@@ -22,3 +22,11 @@ export type TimerUnion = ConstantTimer | UniformRandomTimer | GaussianRandomTime
 export function createDefaultConstantTimer(id: string): ConstantTimer {
   return { id, type: 'ConstantTimer', name: 'Constant Timer', enabled: true, delay: 300 }
 }
+
+export function createDefaultUniformRandomTimer(id: string): UniformRandomTimer {
+  return { id, type: 'UniformRandomTimer', name: 'Uniform Random Timer', enabled: true, minDelay: 0, maxDelay: 300 }
+}
+
+export function createDefaultGaussianRandomTimer(id: string): GaussianRandomTimer {
+  return { id, type: 'GaussianRandomTimer', name: 'Gaussian Random Timer', enabled: true, delay: 300, deviation: 100 }
+}

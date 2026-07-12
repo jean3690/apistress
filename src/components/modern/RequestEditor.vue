@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { useTestPlanStore } from '@/stores'
 import { findNodeById } from '@/utils/tree-utils'
-import type { HttpSampler, HttpBody, KeyValuePair } from '@/types'
+import type { HttpSampler, HttpBody, KeyValuePair, FormDataItem } from '@/types'
 
 const testPlan = useTestPlanStore()
 
@@ -21,7 +21,8 @@ const method = ref('GET')
 const url = ref('')
 const reqHeaders = ref<KeyValuePair[]>([])
 const reqBody = ref('')
-const reqBodyType = ref<'none' | 'raw' | 'form'>('none')
+const reqBodyType = ref<'none' | 'raw' | 'form' | 'form-data'>('none')
+const reqFormData = ref<FormDataItem[]>([])
 const reqContentType = ref('application/json')
 const reqName = ref('')
 const editorTab = ref<'headers' | 'body' | 'auth'>('headers')
@@ -65,6 +66,9 @@ function loadSampler(id: string) {
   } else if (s.body.mode === 'x-www-form-urlencoded') {
     reqBodyType.value = 'form'
     reqBody.value = (s.body.urlEncoded || []).map(p => `${p.key}=${p.value}`).join('&')
+  } else if (s.body.mode === 'form-data') {
+    reqBodyType.value = 'form-data'
+    reqFormData.value = (s.body.formData || []).map(f => ({ ...f }))
   } else {
     reqBodyType.value = 'none'
     reqBody.value = ''
@@ -91,6 +95,7 @@ function saveRequest() {
   const body: HttpBody = {
     mode: reqBodyType.value === 'raw' ? 'raw'
       : reqBodyType.value === 'form' ? 'x-www-form-urlencoded'
+      : reqBodyType.value === 'form-data' ? 'form-data'
       : 'none',
   }
   if (reqBodyType.value === 'raw') {
@@ -104,6 +109,8 @@ function saveRequest() {
         const [k, ...v] = pair.split('=')
         return { key: decodeURIComponent(k), value: decodeURIComponent(v.join('=')) }
       })
+  } else if (reqBodyType.value === 'form-data') {
+    body.formData = reqFormData.value.filter(f => f.key)
   }
 
   testPlan.updateNode(props.samplerId, {
@@ -144,6 +151,18 @@ async function sendRequest() {
       if (reqBodyType.value === 'raw') {
         headers['Content-Type'] = reqContentType.value
         opts.body = reqBody.value
+      } else if (reqBodyType.value === 'form-data') {
+        const fd = new FormData()
+        for (const item of reqFormData.value) {
+          if (!item.key) continue
+          if (item.type === 'file') {
+            fd.append(item.key, new Blob([item.value], { type: item.mimeType || 'application/octet-stream' }), item.filename || 'file')
+          } else {
+            fd.append(item.key, item.value)
+          }
+        }
+        opts.body = fd
+        // Don't set Content-Type — browser sets it with boundary
       } else {
         headers['Content-Type'] = 'application/x-www-form-urlencoded'
         opts.body = reqBody.value
@@ -232,6 +251,7 @@ function tryFormatJson(text: string): string {
           <span :class="['type-opt', { active: reqBodyType === 'none' }]" @click="reqBodyType = 'none'">None</span>
           <span :class="['type-opt', { active: reqBodyType === 'raw' }]" @click="reqBodyType = 'raw'">Raw</span>
           <span :class="['type-opt', { active: reqBodyType === 'form' }]" @click="reqBodyType = 'form'">Form</span>
+          <span :class="['type-opt', { active: reqBodyType === 'form-data' }]" @click="reqBodyType = 'form-data'">Form-Data</span>
         </div>
         <div v-if="reqBodyType === 'raw'" class="body-raw">
           <input v-model="reqContentType" class="ct-input" placeholder="Content-Type" />
@@ -239,6 +259,22 @@ function tryFormatJson(text: string): string {
         </div>
         <div v-else-if="reqBodyType === 'form'" class="body-form">
           <textarea v-model="reqBody" class="body-textarea" rows="6" placeholder="key1=value1&key2=value2"></textarea>
+        </div>
+        <div v-else-if="reqBodyType === 'form-data'" class="kv-editor">
+          <div class="kv-row" v-for="(item, i) in reqFormData" :key="i">
+            <input v-model="item.key" placeholder="Name" class="kv-key" />
+            <select v-model="item.type" class="kv-type">
+              <option value="text">Text</option>
+              <option value="file">File</option>
+            </select>
+            <input v-model="item.value" placeholder="Value/Path" class="kv-value" />
+            <template v-if="item.type === 'file'">
+              <input v-model="item.filename" placeholder="Filename" class="kv-key" />
+              <input v-model="item.mimeType" placeholder="MIME" class="kv-key" />
+            </template>
+            <button class="kv-remove" @click="reqFormData.splice(i, 1)">x</button>
+          </div>
+          <button class="kv-add" @click="reqFormData.push({ key: '', value: '', type: 'text' })">+ Add Field</button>
         </div>
         <div v-else class="body-none"><p>No body will be sent.</p></div>
       </div>
@@ -394,7 +430,17 @@ function tryFormatJson(text: string): string {
   font-size: 12px;
 }
 
-.kv-key:focus, .kv-value:focus { border-color: var(--accent); outline: none; }
+.kv-type {
+  width: 70px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.kv-key:focus, .kv-value:focus, .kv-type:focus { border-color: var(--accent); outline: none; }
 
 .kv-remove {
   padding: 2px 6px;

@@ -48,16 +48,16 @@ const emit = defineEmits<{
 
 function getIcon(type: string): string {
   const icons: Record<string, string> = {
-    HttpSampler: '🌐', LoopController: '🔄', IfController: '❓',
-    WhileController: '⏳', TransactionController: '📦', ThroughputController: '🔀',
-    ResponseAssertion: '✅', JsonAssertion: '🔍', DurationAssertion: '⏱',
-    ConstantTimer: '⏲', UniformRandomTimer: '🎲', GaussianRandomTimer: '📊',
-    RegexExtractor: '🔤', JsonExtractor: '📋', BoundaryExtractor: '✂',
-    HttpDefaults: '⚙', CsvDataSet: '📁', UserVariables: '🔄',
-    UserParameters: '👤', ViewResultsTree: '🌳', SummaryReport: '📈',
-    AggregateReport: '📊',
+    HttpSampler: '▸', LoopController: '↻', IfController: '?',
+    WhileController: '⧖', TransactionController: '▧', ThroughputController: '⇄',
+    ResponseAssertion: '✓', JsonAssertion: '◊', DurationAssertion: '⏱',
+    ConstantTimer: '⏲', UniformRandomTimer: '⚃', GaussianRandomTimer: '≈',
+    RegexExtractor: 'R', JsonExtractor: 'J', BoundaryExtractor: '⊂',
+    HttpDefaults: '⚙', CsvDataSet: '≡', UserVariables: '$',
+    UserParameters: '☺', ViewResultsTree: '≡', SummaryReport: 'Σ',
+    AggregateReport: 'Σ',
   }
-  return icons[type] || '📌'
+  return icons[type] || '●'
 }
 
 function hasKids(node: ChildElement): boolean {

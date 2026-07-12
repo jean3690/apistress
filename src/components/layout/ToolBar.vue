@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useUIStore, useTestPlanStore, useExecutionStore } from '@/stores'
 import { useFileIO } from '@/composables/useFileIO'
 import { importJmx, exportJmx } from '@/utils/jmx'
@@ -9,6 +9,11 @@ const testPlan = useTestPlanStore()
 const execution = useExecutionStore()
 const { state: fileState, loadPlan, savePlan } = useFileIO()
 const importMessage = ref('')
+
+onMounted(() => window.addEventListener('app:save', onSaveWrapper))
+onUnmounted(() => window.removeEventListener('app:save', onSaveWrapper))
+
+function onSaveWrapper() { onSave() }
 
 function onNew() {
   if (testPlan.dirty && !confirm('Discard unsaved changes?')) return
@@ -68,13 +73,13 @@ function onStop() {
       <span class="separator">|</span>
 
       <button class="tb-btn" title="New Test Plan" @click="onNew">
-        <span class="icon">📄</span> New
+        <span class="icon">+</span> New
       </button>
       <button class="tb-btn" title="Open Test Plan" @click="onLoad">
-        <span class="icon">📂</span> Open
+        <span class="icon">&#8618;</span> Open
       </button>
       <button class="tb-btn" title="Save Test Plan" @click="onSave">
-        <span class="icon">💾</span> Save
+        <span class="icon">&#8627;</span> Save
       </button>
       <span v-if="fileState.lastStatus || importMessage" class="save-status">
         {{ fileState.lastStatus || importMessage }}
@@ -88,22 +93,22 @@ function onStop() {
       <span class="separator">|</span>
 
       <button class="tb-btn" title="Import JMeter .jmx" @click="onImportJmx">
-        <span class="icon">📥</span> JMX
+        <span class="icon">&#8623;</span> JMX
       </button>
       <button class="tb-btn" title="Export as JMeter .jmx" @click="onExportJmx">
-        <span class="icon">📤</span> JMX
+        <span class="icon">&#8599;</span> JMX
       </button>
 
       <span class="separator">|</span>
 
       <button class="tb-btn run" :disabled="execution.isRunning" title="Start Test" @click="onRun">
-        <span class="icon">▶</span> Run
+        <span class="icon">&#9654;</span> Run
       </button>
       <button class="tb-btn stop" :disabled="!execution.isRunning" title="Stop Test" @click="onStop">
-        <span class="icon">⏹</span> Stop
+        <span class="icon">&#9632;</span> Stop
       </button>
       <button class="tb-btn" title="Clear Results" @click="execution.clear()">
-        <span class="icon">🗑</span> Clear
+        <span class="icon">&#10005;</span> Clear
       </button>
 
       <span class="separator">|</span>

@@ -13,8 +13,10 @@ use super::result::{ExecutionContext, SampleResult};
 use super::sampler;
 use super::timer::{self, TimerAction};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_virtual_user(
     client: Arc<Client>,
+    client_no_redirect: Arc<Client>,
     tg: Arc<ThreadGroup>,
     app_handle: AppHandle,
     cancel: Arc<AtomicBool>,
@@ -34,8 +36,7 @@ pub async fn execute_virtual_user(
 
     // Ramp-up delay
     if tg.ramp_up > 0 && tg.num_threads > 0 {
-        let delay_ms =
-            (thread_index as f64 * tg.ramp_up as f64 / tg.num_threads as f64) * 1000.0;
+        let delay_ms = (thread_index as f64 * tg.ramp_up as f64 / tg.num_threads as f64) * 1000.0;
         sleep(Duration::from_millis(delay_ms as u64)).await;
     }
 
@@ -51,7 +52,11 @@ pub async fn execute_virtual_user(
     threads_active.fetch_add(1, Ordering::SeqCst);
 
     // Execution
-    let iterations = if tg.loops < 0 { u32::MAX } else { tg.loops as u32 };
+    let iterations = if tg.loops < 0 {
+        u32::MAX
+    } else {
+        tg.loops as u32
+    };
     let duration_limit = if tg.duration > 0 {
         Some(std::time::Instant::now() + Duration::from_secs(tg.duration as u64))
     } else {
@@ -72,10 +77,7 @@ pub async fn execute_virtual_user(
         }
 
         let mut variables: HashMap<String, String> = HashMap::new();
-        variables.insert(
-            "__threadNum".to_string(),
-            (thread_index + 1).to_string(),
-        );
+        variables.insert("__threadNum".to_string(), (thread_index + 1).to_string());
         // Inject CSV row variables for this iteration
         if !csv_rows.is_empty() {
             let idx = csv_idx.fetch_add(1, Ordering::SeqCst) % csv_rows.len();
@@ -86,6 +88,7 @@ pub async fn execute_virtual_user(
 
         let results = execute_children(
             &client,
+            &client_no_redirect,
             &tg.children,
             &mut variables,
             &ctx,
@@ -128,6 +131,7 @@ pub async fn execute_virtual_user(
 
 async fn execute_children(
     client: &Client,
+    client_no_redirect: &Client,
     children: &[ChildElement],
     variables: &mut HashMap<String, String>,
     ctx: &ExecutionContext,
@@ -139,10 +143,15 @@ async fn execute_children(
 
     // Per-child-instance loop counters for controllers
     let mut loop_counts: HashMap<String, u32> = HashMap::new();
+    let mut throughput_times: HashMap<String, std::time::Instant> = HashMap::new();
+
+    // Collect HttpDefaults from this level (including inside nested controllers)
+    let defaults = sampler::collect_defaults(children);
 
     // We use an index-based loop so we can handle nested controller iterations
     execute_level(
         client,
+        client_no_redirect,
         children,
         variables,
         ctx,
@@ -151,14 +160,18 @@ async fn execute_children(
         &mut loop_counts,
         &mut last_sampler_result,
         &mut results,
+        &defaults,
+        &mut throughput_times,
     )
     .await;
 
     results
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn execute_level(
     client: &Client,
+    client_no_redirect: &Client,
     children: &[ChildElement],
     variables: &mut HashMap<String, String>,
     ctx: &ExecutionContext,
@@ -167,6 +180,8 @@ async fn execute_level(
     loop_counts: &mut HashMap<String, u32>,
     last_sampler_result: &mut Option<SampleResult>,
     results: &mut Vec<SampleResult>,
+    defaults: &[super::plan::HttpDefaults],
+    throughput_times: &mut HashMap<String, std::time::Instant>,
 ) {
     let mut i = 0isize;
     while i < children.len() as isize {
@@ -183,8 +198,16 @@ async fn execute_level(
                 if !s.enabled {
                     continue;
                 }
+                let mut sampler = s.clone();
+                sampler::apply_defaults(&mut sampler, defaults);
+                let active_client = if sampler.follow_redirects {
+                    client
+                } else {
+                    client_no_redirect
+                };
                 let result =
-                    sampler::execute_sampler(client, s, variables, ctx, app_handle).await;
+                    sampler::execute_sampler(active_client, &sampler, variables, ctx, app_handle)
+                        .await;
                 *last_sampler_result = Some(result.clone());
                 // Don't add skipped results
                 if !result.id.is_empty() {
@@ -201,11 +224,17 @@ async fn execute_level(
                 // Save the loop count for this controller before evaluation
                 let saved_count = loop_counts.get(&get_child_id(child)).copied();
 
-                let action = controller::evaluate_controller(child, loop_counts, variables);
+                let action = controller::evaluate_controller(
+                    child,
+                    loop_counts,
+                    variables,
+                    throughput_times,
+                );
                 match action {
                     ControllerAction::Execute(ctrl_children) => {
                         Box::pin(execute_level(
                             client,
+                            client_no_redirect,
                             &ctrl_children,
                             variables,
                             ctx,
@@ -214,21 +243,31 @@ async fn execute_level(
                             loop_counts,
                             last_sampler_result,
                             results,
+                            defaults,
+                            throughput_times,
                         ))
                         .await;
 
                         // For WhileController, re-evaluate by going back
                         if let ChildElement::WhileController(_) = child {
-                            let recheck =
-                                controller::evaluate_controller(child, loop_counts, variables);
+                            let recheck = controller::evaluate_controller(
+                                child,
+                                loop_counts,
+                                variables,
+                                throughput_times,
+                            );
                             if matches!(recheck, ControllerAction::Execute(_)) {
                                 i -= 1; // re-enter this controller on next iteration
                             }
                         }
                         // For LoopController, also re-enter until break
                         if let ChildElement::LoopController(_) = child {
-                            let recheck =
-                                controller::evaluate_controller(child, loop_counts, variables);
+                            let recheck = controller::evaluate_controller(
+                                child,
+                                loop_counts,
+                                variables,
+                                throughput_times,
+                            );
                             if matches!(recheck, ControllerAction::Execute(_)) {
                                 i -= 1;
                             } else {
@@ -275,11 +314,7 @@ async fn execute_level(
                     continue;
                 }
                 if let Some(ref last) = last_sampler_result {
-                    let search_in = if re.use_body {
-                        &last.response_body
-                    } else {
-                        ""
-                    };
+                    let search_in = if re.use_body { &last.response_body } else { "" };
                     extract_regex(re, search_in, variables);
                 }
             }
@@ -309,10 +344,8 @@ async fn execute_level(
                 }
             }
 
-            // Config elements applied before sampling (handled in sampler via defaults)
-            ChildElement::HttpDefaults(_) | ChildElement::CsvDataSet(_) => {
-                // Stored for future use in Phase 4
-            }
+            // HttpDefaults applied above, CsvDataSet handled in runner
+            ChildElement::HttpDefaults(_) | ChildElement::CsvDataSet(_) => {}
 
             // Listeners / other - ignored during execution
             _ => {}
@@ -340,10 +373,19 @@ fn extract_regex(
     if let Ok(rx) = re_result {
         let caps: Vec<String> = rx
             .captures_iter(search_in)
-            .filter_map(|c| c.get(1).or_else(|| c.get(0)).map(|m| m.as_str().to_string()))
+            .filter_map(|c| {
+                c.get(1)
+                    .or_else(|| c.get(0))
+                    .map(|m| m.as_str().to_string())
+            })
             .collect();
-        let idx = (re.match_no as usize).saturating_sub(1).min(caps.len().saturating_sub(1));
-        let value = caps.get(idx).cloned().unwrap_or_else(|| re.default_value.clone());
+        let idx = (re.match_no as usize)
+            .saturating_sub(1)
+            .min(caps.len().saturating_sub(1));
+        let value = caps
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(|| re.default_value.clone());
         let interpolated = value
             .replace(&format!("${}", re.reference_name), &value)
             .replace("$0", &caps.first().cloned().unwrap_or_default());
@@ -375,7 +417,10 @@ fn extract_json(
     }
 }
 
-fn resolve_json_path<'a>(value: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+fn resolve_json_path<'a>(
+    value: &'a serde_json::Value,
+    path: &str,
+) -> Option<&'a serde_json::Value> {
     let segments: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
     let mut current = value;
     for seg in segments {

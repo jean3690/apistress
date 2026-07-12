@@ -21,8 +21,7 @@ pub async fn execute_sampler(
 
     let url = build_url(sampler, variables);
     let method = sampler.method.to_uppercase();
-    let method_req = reqwest::Method::from_bytes(method.as_bytes())
-        .unwrap_or(reqwest::Method::GET);
+    let method_req = reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET);
 
     let mut req = client.request(method_req.clone(), &url);
 
@@ -89,10 +88,7 @@ pub async fn execute_sampler(
                 bytes: body_len,
                 sent_bytes,
                 response_code: status_code.to_string(),
-                response_message: status
-                    .canonical_reason()
-                    .unwrap_or("")
-                    .to_string(),
+                response_message: status.canonical_reason().unwrap_or("").to_string(),
                 success: !status.is_server_error() && !status.is_client_error(),
                 url: url.clone(),
                 method: method.clone(),
@@ -190,7 +186,7 @@ fn apply_body(
             let len = interpolated.len() as u64;
             *req = req
                 .try_clone()
-                .unwrap()
+                .expect("Failed to clone request builder")
                 .header("Content-Type", content_type)
                 .body(interpolated);
             len
@@ -216,6 +212,47 @@ fn apply_body(
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .body(body_str);
                 len
+            } else {
+                0
+            }
+        }
+        "form-data" => {
+            if let Some(form_data) = &body.form_data {
+                let mut form = reqwest::multipart::Form::new();
+                let mut total_len = 0u64;
+                for item in form_data {
+                    match item.item_type.as_str() {
+                        "file" => {
+                            let file_bytes = std::fs::read(&item.value).unwrap_or_default();
+                            total_len += file_bytes.len() as u64;
+                            let filename = item.filename.as_deref().unwrap_or("file");
+                            let mime = item
+                                .mime_type
+                                .as_deref()
+                                .unwrap_or("application/octet-stream");
+                            let part = reqwest::multipart::Part::bytes(file_bytes)
+                                .file_name(filename.to_string())
+                                .mime_str(mime)
+                                .unwrap_or_else(|_| {
+                                    eprintln!(
+                                        "Warning: invalid MIME type '{}' for field '{}', using default",
+                                        mime,
+                                        item.key
+                                    );
+                                    reqwest::multipart::Part::bytes(vec![])
+                                        .file_name(filename.to_string())
+                                });
+                            form = form.part(item.key.clone(), part);
+                        }
+                        _ => {
+                            let value = interpolate(&item.value, variables);
+                            total_len += value.len() as u64;
+                            form = form.text(item.key.clone(), value);
+                        }
+                    }
+                }
+                *req = req.try_clone().unwrap().multipart(form);
+                total_len
             } else {
                 0
             }
@@ -270,16 +307,73 @@ pub fn build_url(sampler: &HttpSampler, variables: &HashMap<String, String>) -> 
         }
     };
 
-    format!("{}://{}{}{}{}", protocol, domain, port_str, path, query_string)
+    format!(
+        "{}://{}{}{}{}",
+        protocol, domain, port_str, path, query_string
+    )
 }
 
+/// Collect HttpDefaults from a list of children (non-recursive at this level;
+/// callers should recurse into controller children as needed).
+#[must_use]
+pub fn collect_defaults(children: &[super::plan::ChildElement]) -> Vec<super::plan::HttpDefaults> {
+    let mut defaults = Vec::new();
+    for child in children {
+        if let super::plan::ChildElement::HttpDefaults(d) = child {
+            if d.enabled {
+                defaults.push(d.clone());
+            }
+        }
+    }
+    defaults
+}
+
+/// Apply HttpDefaults to a sampler, filling only fields that are empty/default.
+pub fn apply_defaults(
+    sampler: &mut super::plan::HttpSampler,
+    defaults: &[super::plan::HttpDefaults],
+) {
+    for d in defaults {
+        if !d.enabled {
+            continue;
+        }
+        if (sampler.protocol.is_empty() || sampler.protocol == "https") && !d.protocol.is_empty() {
+            sampler.protocol = d.protocol.clone();
+        }
+        if sampler.domain.is_empty() && !d.domain.is_empty() {
+            sampler.domain = d.domain.clone();
+        }
+        if sampler.port == 443 && d.port != 443 && d.port != 0 {
+            sampler.port = d.port;
+        }
+        if (sampler.path.is_empty() || sampler.path == "/") && !d.path.is_empty() && d.path != "/" {
+            sampler.path = d.path.clone();
+        }
+        // Merge headers: defaults first, then sampler-specific headers
+        for h in &d.headers {
+            if !h.key.is_empty()
+                && !sampler
+                    .headers
+                    .iter()
+                    .any(|sh| sh.key.eq_ignore_ascii_case(&h.key))
+            {
+                sampler.headers.push(h.clone());
+            }
+        }
+    }
+}
+
+#[must_use]
 pub fn interpolate(template: &str, variables: &HashMap<String, String>) -> String {
     let mut result = template.to_string();
     for (key, value) in variables {
         result = result.replace(&format!("{{{{{}}}}}", key), value);
     }
     // Built-in functions
-    result = result.replace("${__threadNum}", &variables.get("__threadNum").cloned().unwrap_or_default());
+    result = result.replace(
+        "${__threadNum}",
+        &variables.get("__threadNum").cloned().unwrap_or_default(),
+    );
     result = result.replace(
         "${__time()}",
         &chrono::Utc::now().timestamp_millis().to_string(),
@@ -288,29 +382,10 @@ pub fn interpolate(template: &str, variables: &HashMap<String, String>) -> Strin
 }
 
 fn base64_encode(input: &str) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let bytes = input.as_bytes();
-    let mut result = String::new();
-    for chunk in bytes.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
-        let triple = (b0 << 16) | (b1 << 8) | b2;
-        result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
-        result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
-        result.push(if chunk.len() > 1 { CHARS[((triple >> 6) & 0x3F) as usize] } else { b'=' } as char);
-        result.push(if chunk.len() > 2 { CHARS[(triple & 0x3F) as usize] } else { b'=' } as char);
-    }
-    result
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(input)
 }
 
 fn urlencoding(s: &str) -> String {
-    // Simple percent-encoding for common characters
-    s.replace('%', "%25")
-        .replace(' ', "%20")
-        .replace('&', "%26")
-        .replace('=', "%3D")
-        .replace('#', "%23")
-        .replace('?', "%3F")
-        .replace('+', "%2B")
+    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
 }

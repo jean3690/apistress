@@ -1,101 +1,5 @@
-<template>
-  <div class="panel results-panel">
-    <div class="panel-header">
-      <div class="header-left-group">
-        <span>Results</span>
-        <button
-          v-if="execution.results.length > 0"
-          class="export-btn"
-          title="Export results as CSV"
-          @click="exportCsv"
-        >CSV</button>
-      </div>
-      <div class="header-tabs">
-        <button
-          v-for="tab in tabs" :key="tab.key"
-          :class="{ active: ui.activeResultTab === tab.key }"
-          @click="ui.setActiveResultTab(tab.key)"
-        >{{ tab.label }}</button>
-      </div>
-    </div>
-    <div class="results-body">
-      <!-- Empty state -->
-      <div v-if="execution.results.length === 0" class="empty-state">
-        <p>Run the test to see results</p>
-      </div>
-
-      <!-- Summary Table -->
-      <div v-else-if="ui.activeResultTab === 'summary'" class="summary-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Label</th><th>#Samples</th><th>Avg</th><th>Min</th><th>Max</th>
-              <th>Median</th><th>p90</th><th>p95</th><th>p99</th>
-              <th>Error%</th><th>Throughput</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in execution.aggregateByLabel" :key="s.label">
-              <td>{{ s.label }}</td>
-              <td>{{ s.count }}</td>
-              <td>{{ s.avg }}ms</td>
-              <td>{{ s.min }}ms</td>
-              <td>{{ s.max }}ms</td>
-              <td>{{ s.median }}ms</td>
-              <td>{{ s.p90 }}ms</td>
-              <td>{{ s.p95 }}ms</td>
-              <td>{{ s.p99 }}ms</td>
-              <td :class="{ error: s.errorRate > 0 }">{{ s.errorRate }}%</td>
-              <td>{{ s.throughput }}/s</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Results Tree -->
-      <div v-else-if="ui.activeResultTab === 'tree'" class="results-list" @scroll="onTreeScroll">
-        <div class="scroll-spacer" :style="{ height: visibleResults.totalHeight + 'px' }">
-          <div class="visible-window" :style="{ transform: `translateY(${visibleResults.offsetY}px)` }">
-            <div
-              v-for="item in visibleResults.items" :key="item.result.id"
-              :class="['result-item', { fail: !item.result.success }]"
-            >
-              <span class="idx">{{ item.index + 1 }}</span>
-              <span :class="['dot', item.result.success ? 'ok' : 'fail']"></span>
-              <span class="r-label">{{ item.result.label }}</span>
-              <span class="r-code">{{ item.result.responseCode }}</span>
-              <span class="r-time">{{ item.result.elapsed }}ms</span>
-              <span class="r-size">{{ (item.result.bytes / 1024).toFixed(1) }}KB</span>
-            </div>
-          </div>
-        </div>
-        <div class="result-count">
-          {{ execution.results.length.toLocaleString() }} samples
-        </div>
-      </div>
-
-      <!-- Charts -->
-      <div v-else class="charts-grid">
-        <div class="chart-container">
-          <div class="chart-title">Response Time</div>
-          <v-chart class="chart" :option="responseTimeOption" autoresize />
-        </div>
-        <div class="chart-row">
-          <div class="chart-container half">
-            <div class="chart-title">Throughput (req/s)</div>
-            <v-chart class="chart" :option="throughputOption" autoresize />
-          </div>
-          <div class="chart-container half">
-            <div class="chart-title">Error Distribution</div>
-            <v-chart class="chart" :option="errorPieOption" autoresize />
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, shallowRef } from 'vue'
 import { useUIStore, useExecutionStore } from '@/stores'
 
 const VChart = defineAsyncComponent(async () => {
@@ -113,11 +17,32 @@ const VChart = defineAsyncComponent(async () => {
 const ui = useUIStore()
 const execution = useExecutionStore()
 
+// Result detail view
+const selectedResultId = shallowRef<string | null>(null)
+const detailTab = shallowRef<'response' | 'request' | 'assertions'>('response')
+
+const selectedResult = computed(() => {
+  if (!selectedResultId.value) return null
+  return execution.results.find(r => r.id === selectedResultId.value) || null
+})
+
+function selectResult(id: string) {
+  selectedResultId.value = selectedResultId.value === id ? null : id
+}
+
+function formatBody(body: string): string {
+  try {
+    return JSON.stringify(JSON.parse(body), null, 2)
+  } catch {
+    return body
+  }
+}
+
 // Virtual scroll for results tree
 const ITEM_HEIGHT = 26
 const BUFFER = 20
-const treeScrollTop = ref(0)
-const treeViewHeight = ref(400)
+const treeScrollTop = shallowRef(0)
+const treeViewHeight = shallowRef(400)
 
 const visibleResults = computed(() => {
   const total = execution.results.length
@@ -271,6 +196,186 @@ const errorPieOption = computed(() => {
 })
 </script>
 
+<template>
+  <div class="panel results-panel">
+    <div class="panel-header">
+      <div class="header-left-group">
+        <span>Results</span>
+        <button
+          v-if="execution.results.length > 0"
+          class="export-btn"
+          title="Export results as CSV"
+          @click="exportCsv"
+        >CSV</button>
+      </div>
+      <div class="header-tabs">
+        <button
+          v-for="tab in tabs" :key="tab.key"
+          :class="{ active: ui.activeResultTab === tab.key }"
+          @click="ui.setActiveResultTab(tab.key)"
+        >{{ tab.label }}</button>
+      </div>
+    </div>
+    <div class="results-body">
+      <!-- Empty state -->
+      <div v-if="execution.results.length === 0" class="empty-state">
+        <p>Run the test to see results</p>
+      </div>
+
+      <!-- Summary Table -->
+      <div v-else-if="ui.activeResultTab === 'summary'" class="summary-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Label</th><th>#Samples</th><th>Avg</th><th>Min</th><th>Max</th>
+              <th>Median</th><th>p90</th><th>p95</th><th>p99</th>
+              <th>Error%</th><th>Throughput</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in execution.aggregateByLabel" :key="s.label">
+              <td>{{ s.label }}</td>
+              <td>{{ s.count }}</td>
+              <td>{{ s.avg }}ms</td>
+              <td>{{ s.min }}ms</td>
+              <td>{{ s.max }}ms</td>
+              <td>{{ s.median }}ms</td>
+              <td>{{ s.p90 }}ms</td>
+              <td>{{ s.p95 }}ms</td>
+              <td>{{ s.p99 }}ms</td>
+              <td :class="{ error: s.errorRate > 0 }">{{ s.errorRate }}%</td>
+              <td>{{ s.throughput }}/s</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Results Tree -->
+      <div v-else-if="ui.activeResultTab === 'tree'" class="results-list" @scroll="onTreeScroll">
+        <div class="scroll-spacer" :style="{ height: visibleResults.totalHeight + 'px' }">
+          <div class="visible-window" :style="{ transform: `translateY(${visibleResults.offsetY}px)` }">
+            <div
+              v-for="item in visibleResults.items" :key="item.result.id"
+              :class="['result-item', { fail: !item.result.success, selected: selectedResultId === item.result.id }]"
+              @click="selectResult(item.result.id)"
+            >
+              <span class="idx">{{ item.index + 1 }}</span>
+              <span :class="['dot', item.result.success ? 'ok' : 'fail']"></span>
+              <span class="r-label">{{ item.result.label }}</span>
+              <span class="r-code">{{ item.result.responseCode }}</span>
+              <span class="r-time">{{ item.result.elapsed }}ms</span>
+              <span class="r-size">{{ (item.result.bytes / 1024).toFixed(1) }}KB</span>
+            </div>
+          </div>
+        </div>
+        <div class="result-count">
+          {{ execution.results.length.toLocaleString() }} samples
+        </div>
+
+        <!-- Result Detail -->
+        <div v-if="selectedResult" class="result-detail">
+          <div class="detail-header">
+            <span class="detail-title">{{ selectedResult.label }}</span>
+            <span :class="['detail-badge', selectedResult.success ? 'ok' : 'fail']">
+              {{ selectedResult.success ? 'PASS' : 'FAIL' }}
+            </span>
+            <span class="detail-close" @click="selectedResultId = null">&times;</span>
+          </div>
+
+          <div class="detail-meta">
+            <div class="meta-item"><span class="meta-label">URL</span><span class="meta-value mono">{{ selectedResult.url }}</span></div>
+            <div class="meta-row">
+              <div class="meta-item"><span class="meta-label">Method</span><span class="meta-value">{{ selectedResult.method }}</span></div>
+              <div class="meta-item"><span class="meta-label">Status</span><span class="meta-value">{{ selectedResult.responseCode }} {{ selectedResult.responseMessage }}</span></div>
+              <div class="meta-item"><span class="meta-label">Time</span><span class="meta-value">{{ selectedResult.elapsed }}ms</span></div>
+              <div class="meta-item"><span class="meta-label">Size</span><span class="meta-value">{{ (selectedResult.bytes / 1024).toFixed(1) }}KB</span></div>
+            </div>
+            <div v-if="selectedResult.errorMessage" class="meta-item error-msg">
+              <span class="meta-label">Error</span>
+              <span class="meta-value">{{ selectedResult.errorMessage }}</span>
+            </div>
+          </div>
+
+          <div class="detail-tabs">
+            <span :class="['dtab', { active: detailTab === 'response' }]" @click="detailTab = 'response'">Response</span>
+            <span :class="['dtab', { active: detailTab === 'request' }]" @click="detailTab = 'request'">Request</span>
+            <span :class="['dtab', { active: detailTab === 'assertions' }]" @click="detailTab = 'assertions'">
+              Assertions
+              <span v-if="selectedResult.assertionResults.length" class="tab-badge">{{ selectedResult.assertionResults.length }}</span>
+            </span>
+          </div>
+
+          <div class="detail-content">
+            <!-- Response tab -->
+            <div v-if="detailTab === 'response'">
+              <div class="prop-section" v-if="selectedResult.responseHeaders.length">
+                <div class="section-title">Response Headers</div>
+                <div v-for="(h, i) in selectedResult.responseHeaders" :key="i" class="header-line">
+                  <span class="hdr-key">{{ h.key }}:</span>
+                  <span class="hdr-value">{{ h.value }}</span>
+                </div>
+              </div>
+              <div class="prop-section">
+                <div class="section-title">Response Body</div>
+                <pre class="body-view">{{ formatBody(selectedResult.responseBody) }}</pre>
+              </div>
+            </div>
+
+            <!-- Request tab -->
+            <div v-if="detailTab === 'request'">
+              <div class="prop-section" v-if="selectedResult.requestHeaders.length">
+                <div class="section-title">Request Headers</div>
+                <div v-for="(h, i) in selectedResult.requestHeaders" :key="i" class="header-line">
+                  <span class="hdr-key">{{ h.key }}:</span>
+                  <span class="hdr-value">{{ h.value }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Assertions tab -->
+            <div v-if="detailTab === 'assertions'">
+              <div v-if="!selectedResult.assertionResults.length" class="empty-detail">
+                No assertions configured
+              </div>
+              <div v-else>
+                <div
+                  v-for="(ar, i) in selectedResult.assertionResults"
+                  :key="i"
+                  :class="['assertion-row', ar.failure ? 'fail' : 'pass']"
+                >
+                  <span class="assert-icon">{{ ar.failure ? '&#10007;' : '&#10003;' }}</span>
+                  <div class="assert-info">
+                    <span class="assert-name">{{ ar.name }}</span>
+                    <span v-if="ar.failureMessage" class="assert-msg">{{ ar.failureMessage }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div v-else class="charts-grid">
+        <div class="chart-container">
+          <div class="chart-title">Response Time</div>
+          <v-chart class="chart" :option="responseTimeOption" autoresize />
+        </div>
+        <div class="chart-row">
+          <div class="chart-container half">
+            <div class="chart-title">Throughput (req/s)</div>
+            <v-chart class="chart" :option="throughputOption" autoresize />
+          </div>
+          <div class="chart-container half">
+            <div class="chart-title">Error Distribution</div>
+            <v-chart class="chart" :option="errorPieOption" autoresize />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <style scoped>
 .panel {
   display: flex;
@@ -385,6 +490,158 @@ const errorPieOption = computed(() => {
 .r-code { width: 50px; text-align: center; color: var(--text-secondary); }
 .r-time { width: 60px; text-align: right; font-variant-numeric: tabular-nums; }
 .r-size { width: 50px; text-align: right; color: var(--text-muted); }
+
+.result-item { cursor: pointer; }
+.result-item:hover { background: var(--bg-hover); }
+.result-item.selected { background: rgba(137, 180, 250, 0.1); border-left: 3px solid var(--accent); }
+
+/* Result Detail */
+.result-detail {
+  border-top: 2px solid var(--accent);
+  background: var(--bg-secondary);
+  max-height: 50%;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.detail-title { font-weight: 600; flex: 1; }
+
+.detail-badge {
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.detail-badge.ok { background: rgba(166, 227, 161, 0.2); color: var(--success); }
+.detail-badge.fail { background: rgba(243, 139, 168, 0.2); color: var(--danger); }
+
+.detail-close {
+  font-size: 18px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.detail-close:hover { color: var(--danger); }
+
+.detail-meta {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.meta-item { display: flex; gap: 8px; align-items: baseline; }
+.meta-row { display: flex; gap: 16px; flex-wrap: wrap; }
+
+.meta-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  min-width: 50px;
+}
+
+.meta-value { color: var(--text-primary); font-size: 12px; }
+.meta-value.mono { font-family: 'SF Mono', 'Consolas', monospace; font-size: 11px; }
+
+.error-msg .meta-value { color: var(--danger); }
+
+.detail-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 10px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.dtab {
+  padding: 6px 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.tab-badge {
+  background: var(--accent);
+  color: var(--bg-primary);
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.detail-content { padding: 8px 10px; }
+
+.header-line {
+  display: flex;
+  gap: 4px;
+  padding: 1px 0;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+.hdr-key { color: var(--accent); white-space: nowrap; }
+.hdr-value { color: var(--text-secondary); word-break: break-all; }
+
+.body-view {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
+  color: var(--text-primary);
+}
+
+.empty-detail {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.assertion-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+}
+.assertion-row.pass { border-left: 3px solid var(--success); }
+.assertion-row.fail { border-left: 3px solid var(--danger); }
+
+.assert-icon { font-size: 14px; flex-shrink: 0; }
+.assertion-row.pass .assert-icon { color: var(--success); }
+.assertion-row.fail .assert-icon { color: var(--danger); }
+
+.assert-info { display: flex; flex-direction: column; gap: 2px; }
+.assert-name { font-weight: 600; font-size: 12px; }
+.assert-msg { color: var(--danger); font-size: 11px; }
 
 /* Charts */
 .charts-grid {

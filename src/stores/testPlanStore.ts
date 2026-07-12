@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { shallowRef, ref, computed } from 'vue'
 import {
   type TestPlan,
   type ThreadGroup,
@@ -12,8 +12,8 @@ import { findNodeById, removeNodeById, addChildToParent } from '@/utils/tree-uti
 
 export const useTestPlanStore = defineStore('testPlan', () => {
   const plan = ref<TestPlan>(createDefaultTestPlan())
-  const selectedNodeId = ref<string | null>(null)
-  const dirty = ref(false)
+  const selectedNodeId = shallowRef<string | null>(null)
+  const dirty = shallowRef(false)
 
   const allThreadGroups = computed(() => plan.value.threadGroups)
 

@@ -52,7 +52,7 @@ function onArrowClick(e: MouseEvent, id: string) {
       @click="onNodeClick(testPlan.plan)"
       @contextmenu="onNodeContextMenu($event, testPlan.plan)"
     >
-      <span class="node-icon">📋</span>
+      <span class="node-icon">▣</span>
       <span class="node-label">{{ testPlan.plan.name || 'Test Plan' }}</span>
     </div>
 
@@ -67,7 +67,7 @@ function onArrowClick(e: MouseEvent, id: string) {
           :class="['arrow', { expanded: isExpanded(tg.id) }]"
           @click="onArrowClick($event, tg.id)"
         >▶</span>
-        <span class="node-icon">🧵</span>
+        <span class="node-icon">▤</span>
         <span class="node-label">{{ tg.name }}</span>
         <span class="node-badge">{{ tg.numThreads }} threads</span>
       </div>

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { shallowRef, ref, computed } from 'vue'
 import type { SampleResult, AggregateStats } from '@/types'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
@@ -7,12 +7,12 @@ import { listen } from '@tauri-apps/api/event'
 export type ExecutionStatus = 'idle' | 'running' | 'stopping' | 'completed'
 
 export const useExecutionStore = defineStore('execution', () => {
-  const status = ref<ExecutionStatus>('idle')
+  const status = shallowRef<ExecutionStatus>('idle')
   const results = ref<SampleResult[]>([])
-  const errorCount = ref(0)
-  const startTime = ref<number | null>(null)
-  const threadsActive = ref(0)
-  const totalSamples = ref(0)
+  const errorCount = shallowRef(0)
+  const startTime = shallowRef<number | null>(null)
+  const threadsActive = shallowRef(0)
+  const totalSamples = shallowRef(0)
   const unlistenResult: (() => void)[] = []
 
   const isRunning = computed(() => status.value === 'running')

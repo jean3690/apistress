@@ -1,4 +1,4 @@
-import type { TestPlan, ThreadGroup, ChildElement, HttpSampler, LoopController, IfController, ResponseAssertion, DurationAssertion, ConstantTimer, RegexExtractor, JsonExtractor, KeyValuePair } from '@/types'
+import type { TestPlan, ThreadGroup, ChildElement, HttpSampler, LoopController, IfController, TransactionController, ThroughputController, ResponseAssertion, JsonAssertion, DurationAssertion, ConstantTimer, UniformRandomTimer, GaussianRandomTimer, RegexExtractor, JsonExtractor, BoundaryExtractor, UserParameters, KeyValuePair } from '@/types'
 
 /**
  * Parse a JMeter .jmx XML file into an ApiStress TestPlan with proper nested structure.
@@ -39,7 +39,6 @@ export function importJmx(xml: string): TestPlan {
     threadGroups: [],
     variables: [],
     listeners: [],
-    results: [],
   }
 
   // Walk top-level elements
@@ -123,6 +122,27 @@ function parseChildren(hashTree: Element, depth = 0): ChildElement[] {
         break
       case 'JSONPathExtractor':
         child = parseJsonExtractor(el)
+        break
+      case 'JSONPathAssertion':
+        child = parseJsonAssertion(el)
+        break
+      case 'TransactionController':
+        child = parseTransactionController(el)
+        break
+      case 'ThroughputController':
+        child = parseThroughputController(el)
+        break
+      case 'BoundaryExtractor':
+        child = parseBoundaryExtractor(el)
+        break
+      case 'UniformRandomTimer':
+        child = parseUniformRandomTimer(el)
+        break
+      case 'GaussianRandomTimer':
+        child = parseGaussianRandomTimer(el)
+        break
+      case 'UserParameters':
+        child = parseUserParameters(el)
         break
       case 'ResultCollector':
         // Skip — add as listener
@@ -326,10 +346,130 @@ function parseStringPropList(el: Element, propName: string): string[] {
   return ['']
 }
 
+function parseTransactionController(el: Element): TransactionController {
+  return {
+    id: crypto.randomUUID(),
+    type: 'TransactionController',
+    name: getAttr(el, 'testname') || 'Transaction Controller',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    includeDuration: getProp(el, 'TransactionController.includeTimers') === 'true',
+    children: [],
+  }
+}
+
+function parseThroughputController(el: Element): ThroughputController {
+  return {
+    id: crypto.randomUUID(),
+    type: 'ThroughputController',
+    name: getAttr(el, 'testname') || 'Throughput Controller',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    throughput: parseInt(getProp(el, 'ThroughputController.maxThroughput') || '60'),
+    perThread: getProp(el, 'ThroughputController.perThread') === 'true',
+    children: [],
+  }
+}
+
+function parseBoundaryExtractor(el: Element): BoundaryExtractor {
+  return {
+    id: crypto.randomUUID(),
+    type: 'BoundaryExtractor',
+    name: getAttr(el, 'testname') || 'Boundary Extractor',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    referenceName: getProp(el, 'BoundaryExtractor.refname') || '',
+    leftBoundary: getProp(el, 'BoundaryExtractor.lboundary') || '',
+    rightBoundary: getProp(el, 'BoundaryExtractor.rboundary') || '',
+    matchNo: parseInt(getProp(el, 'BoundaryExtractor.match_number') || '1'),
+    defaultValue: getProp(el, 'BoundaryExtractor.default') || '',
+  }
+}
+
+function parseJsonAssertion(el: Element): JsonAssertion {
+  return {
+    id: crypto.randomUUID(),
+    type: 'JsonAssertion',
+    name: getAttr(el, 'testname') || 'JSON Assertion',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    jsonPath: getProp(el, 'JSONPathAssertion.jsonpath') || '$',
+    expectedValue: getProp(el, 'JSONPathAssertion.expectedValue') || '',
+    comparisonMode: 'exists',
+    expectNull: getProp(el, 'JSONPathAssertion.expectNull') === 'true',
+  }
+}
+
+function parseUniformRandomTimer(el: Element): UniformRandomTimer {
+  return {
+    id: crypto.randomUUID(),
+    type: 'UniformRandomTimer',
+    name: getAttr(el, 'testname') || 'Uniform Random Timer',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    minDelay: parseInt(getProp(el, 'UniformRandomTimer.delay') || '0'),
+    maxDelay: parseInt(getProp(el, 'UniformRandomTimer.range') || '300'),
+  }
+}
+
+function parseGaussianRandomTimer(el: Element): GaussianRandomTimer {
+  return {
+    id: crypto.randomUUID(),
+    type: 'GaussianRandomTimer',
+    name: getAttr(el, 'testname') || 'Gaussian Random Timer',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    delay: parseInt(getProp(el, 'GaussianRandomTimer.delay') || '300'),
+    deviation: parseInt(getProp(el, 'GaussianRandomTimer.range') || '100'),
+  }
+}
+
+function parseUserParameters(el: Element): UserParameters {
+  const params: KeyValuePair[] = []
+  for (const cp of el.getElementsByTagName('collectionProp')) {
+    if (cp.getAttribute('name') === 'UserParameters.names') {
+      for (const sp of cp.getElementsByTagName('stringProp')) {
+        params.push({ key: sp.textContent || '', value: '' })
+      }
+    }
+  }
+  return {
+    id: crypto.randomUUID(),
+    type: 'UserParameters',
+    name: getAttr(el, 'testname') || 'User Parameters',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    parameters: params,
+  }
+}
+
 function parseBody(el: Element): import('@/types').HttpBody {
   const rawBody = getProp(el, 'HTTPSampler.postBodyRaw')
   if (rawBody) {
     return { mode: 'raw', raw: rawBody, contentType: getProp(el, 'HTTPSampler.content_type') || 'application/json' }
+  }
+  // Check for multipart/form-data
+  const isMultipart = getProp(el, 'HTTPSampler.DO_MULTIPART_POST') === 'true'
+  if (isMultipart) {
+    const formData: import('@/types').FormDataItem[] = []
+    // Collect text parameters
+    const args = parseArgElements(el, 'argument')
+    for (const arg of args) {
+      if (arg.key) formData.push({ key: arg.key, value: arg.value, type: 'text' })
+    }
+    // Collect file uploads
+    for (const cp of el.getElementsByTagName('collectionProp')) {
+      if (cp.getAttribute('name') === 'HTTPFileArgs.files') {
+        for (const ep of cp.getElementsByTagName('elementProp')) {
+          const filePath = parseElementPropString(ep, 'File.path') || ''
+          const paramName = parseElementPropString(ep, 'File.paramname') || 'file'
+          const mimeType = parseElementPropString(ep, 'File.mimetype') || ''
+          if (filePath || paramName) {
+            formData.push({
+              key: paramName,
+              value: filePath,
+              type: 'file',
+              filename: filePath.split(/[/\\]/).pop() || '',
+              mimeType,
+            })
+          }
+        }
+      }
+    }
+    if (formData.length > 0) return { mode: 'form-data', formData }
   }
   const args = parseArgElements(el, 'argument')
   if (args.length > 0) {
@@ -457,6 +597,46 @@ function pushChildElement(lines: string[], indent: number, child: ChildElement) 
         lines.push(`${pad}  <stringProp name="HTTPSampler.content_type">${escXml(s.body.contentType || 'application/json')}</stringProp>`)
         lines.push(`${pad}  <stringProp name="HTTPSampler.postBody">${escXml(s.body.raw)}</stringProp>`)
       }
+      if (s.body.mode === 'x-www-form-urlencoded' && s.body.urlEncoded && s.body.urlEncoded.length > 0) {
+        lines.push(`${pad}  <collectionProp name="HTTPSampler.argument_manager">`)
+        for (const p of s.body.urlEncoded) {
+          if (!p.key) continue
+          lines.push(`${pad}    <elementProp name="${escXml(p.key)}" elementType="HTTPArgument">`)
+          lines.push(`${pad}      <stringProp name="Argument.name">${escXml(p.key)}</stringProp>`)
+          lines.push(`${pad}      <stringProp name="Argument.value">${escXml(p.value)}</stringProp>`)
+          lines.push(`${pad}      <boolProp name="HTTPArgument.always_encode">false</boolProp>`)
+          lines.push(`${pad}    </elementProp>`)
+        }
+        lines.push(`${pad}  </collectionProp>`)
+      }
+      if (s.body.mode === 'form-data' && s.body.formData && s.body.formData.length > 0) {
+        lines.push(`${pad}  <boolProp name="HTTPSampler.DO_MULTIPART_POST">true</boolProp>`)
+        const textFields = s.body.formData.filter(f => f.type !== 'file')
+        const fileFields = s.body.formData.filter(f => f.type === 'file')
+        if (textFields.length > 0) {
+          lines.push(`${pad}  <collectionProp name="HTTPSampler.argument_manager">`)
+          for (const f of textFields) {
+            lines.push(`${pad}    <elementProp name="${escXml(f.key)}" elementType="HTTPArgument">`)
+            lines.push(`${pad}      <stringProp name="Argument.name">${escXml(f.key)}</stringProp>`)
+            lines.push(`${pad}      <stringProp name="Argument.value">${escXml(f.value)}</stringProp>`)
+            lines.push(`${pad}      <boolProp name="HTTPArgument.always_encode">false</boolProp>`)
+            lines.push(`${pad}    </elementProp>`)
+          }
+          lines.push(`${pad}  </collectionProp>`)
+        }
+        if (fileFields.length > 0) {
+          lines.push(`${pad}  <collectionProp name="HTTPFileArgs.files">`)
+          for (const f of fileFields) {
+            const encodedPath = escXml(f.value)
+            lines.push(`${pad}    <elementProp name="${escXml(f.filename || f.key)}" elementType="HTTPFileArg">`)
+            lines.push(`${pad}      <stringProp name="File.path">${encodedPath}</stringProp>`)
+            lines.push(`${pad}      <stringProp name="File.paramname">${escXml(f.key)}</stringProp>`)
+            lines.push(`${pad}      <stringProp name="File.mimetype">${escXml(f.mimeType || 'application/octet-stream')}</stringProp>`)
+            lines.push(`${pad}    </elementProp>`)
+          }
+          lines.push(`${pad}  </collectionProp>`)
+        }
+      }
       if (s.headers.length > 0) {
         lines.push(`${pad}  <collectionProp name="HTTPSampler.header_manager">`)
         for (const h of s.headers) {
@@ -524,6 +704,76 @@ function pushChildElement(lines: string[], indent: number, child: ChildElement) 
       lines.push(`${pad}  <stringProp name="RegexExtractor.regex">${escXml(re.regex)}</stringProp>`)
       lines.push(`${pad}  <stringProp name="RegexExtractor.template">${escXml(re.template)}</stringProp>`)
       lines.push(`${pad}</RegexExtractor>`)
+      break
+    }
+    case 'TransactionController': {
+      const c = child as unknown as TransactionController
+      lines.push(`${pad}<TransactionController testname="${escXml(c.name)}" enabled="${c.enabled}">`)
+      lines.push(`${pad}  <boolProp name="TransactionController.includeTimers">${c.includeDuration}</boolProp>`)
+      lines.push(`${pad}</TransactionController>`)
+      break
+    }
+    case 'ThroughputController': {
+      const c = child as unknown as ThroughputController
+      lines.push(`${pad}<ThroughputController testname="${escXml(c.name)}" enabled="${c.enabled}">`)
+      lines.push(`${pad}  <stringProp name="ThroughputController.maxThroughput">${c.throughput}</stringProp>`)
+      lines.push(`${pad}  <boolProp name="ThroughputController.perThread">${c.perThread}</boolProp>`)
+      lines.push(`${pad}</ThroughputController>`)
+      break
+    }
+    case 'BoundaryExtractor': {
+      const be = child as unknown as BoundaryExtractor
+      lines.push(`${pad}<BoundaryExtractor testname="${escXml(be.name)}" enabled="${be.enabled}">`)
+      lines.push(`${pad}  <stringProp name="BoundaryExtractor.refname">${escXml(be.referenceName)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="BoundaryExtractor.lboundary">${escXml(be.leftBoundary)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="BoundaryExtractor.rboundary">${escXml(be.rightBoundary)}</stringProp>`)
+      lines.push(`${pad}</BoundaryExtractor>`)
+      break
+    }
+    case 'JsonAssertion': {
+      const a = child as unknown as JsonAssertion
+      lines.push(`${pad}<JSONPathAssertion testname="${escXml(a.name)}" enabled="${a.enabled}">`)
+      lines.push(`${pad}  <stringProp name="JSONPathAssertion.jsonpath">${escXml(a.jsonPath)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="JSONPathAssertion.expectedValue">${escXml(a.expectedValue)}</stringProp>`)
+      lines.push(`${pad}</JSONPathAssertion>`)
+      break
+    }
+    case 'UniformRandomTimer': {
+      const t = child as unknown as UniformRandomTimer
+      lines.push(`${pad}<UniformRandomTimer testname="${escXml(t.name)}" enabled="${t.enabled}">`)
+      lines.push(`${pad}  <stringProp name="UniformRandomTimer.delay">${t.minDelay}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="UniformRandomTimer.range">${t.maxDelay}</stringProp>`)
+      lines.push(`${pad}</UniformRandomTimer>`)
+      break
+    }
+    case 'GaussianRandomTimer': {
+      const t = child as unknown as GaussianRandomTimer
+      lines.push(`${pad}<GaussianRandomTimer testname="${escXml(t.name)}" enabled="${t.enabled}">`)
+      lines.push(`${pad}  <stringProp name="GaussianRandomTimer.delay">${t.delay}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="GaussianRandomTimer.range">${t.deviation}</stringProp>`)
+      lines.push(`${pad}</GaussianRandomTimer>`)
+      break
+    }
+    case 'UserParameters': {
+      const up = child as unknown as UserParameters
+      lines.push(`${pad}<UserParameters testname="${escXml(up.name)}" enabled="${up.enabled}">`)
+      if (up.parameters.length > 0) {
+        lines.push(`${pad}  <collectionProp name="UserParameters.names">`)
+        for (const p of up.parameters) {
+          lines.push(`${pad}    <stringProp name="0">${escXml(p.key)}</stringProp>`)
+        }
+        lines.push(`${pad}  </collectionProp>`)
+      }
+      lines.push(`${pad}</UserParameters>`)
+      break
+    }
+    case 'JsonExtractor': {
+      const je = child as unknown as JsonExtractor
+      lines.push(`${pad}<JSONPathExtractor testname="${escXml(je.name)}" enabled="${je.enabled}">`)
+      lines.push(`${pad}  <stringProp name="JSONPathExtractor.var">${escXml(je.referenceName)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="JSONPathExtractor.jsonpath">${escXml(je.jsonPath)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="JSONPathExtractor.default">${escXml(je.defaultValue)}</stringProp>`)
+      lines.push(`${pad}</JSONPathExtractor>`)
       break
     }
   }

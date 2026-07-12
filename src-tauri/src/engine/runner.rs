@@ -1,10 +1,9 @@
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use tokio::task::JoinHandle;
 use tauri::AppHandle;
 use tauri::Emitter;
+use tokio::task::JoinHandle;
 
 use super::plan::{ChildElement, TestPlan};
 use super::result::StatusPayload;
@@ -46,15 +45,13 @@ fn load_csv_datasets(children: &[ChildElement]) -> Vec<Vec<(String, String)>> {
                 .has_headers(csv.ignore_first_line)
                 .from_path(&csv.filename)
             {
-                for result in rdr.records() {
-                    if let Ok(record) = result {
-                        let row: Vec<(String, String)> = var_names
-                            .iter()
-                            .enumerate()
-                            .map(|(i, name)| (name.clone(), record.get(i).unwrap_or("").to_string()))
-                            .collect();
-                        all_rows.push(row);
-                    }
+                for record in rdr.records().flatten() {
+                    let row: Vec<(String, String)> = var_names
+                        .iter()
+                        .enumerate()
+                        .map(|(i, name)| (name.clone(), record.get(i).unwrap_or("").to_string()))
+                        .collect();
+                    all_rows.push(row);
                 }
             }
         }
@@ -63,8 +60,12 @@ fn load_csv_datasets(children: &[ChildElement]) -> Vec<Vec<(String, String)>> {
             ChildElement::LoopController(c) => all_rows.extend(load_csv_datasets(&c.children)),
             ChildElement::IfController(c) => all_rows.extend(load_csv_datasets(&c.children)),
             ChildElement::WhileController(c) => all_rows.extend(load_csv_datasets(&c.children)),
-            ChildElement::TransactionController(c) => all_rows.extend(load_csv_datasets(&c.children)),
-            ChildElement::ThroughputController(c) => all_rows.extend(load_csv_datasets(&c.children)),
+            ChildElement::TransactionController(c) => {
+                all_rows.extend(load_csv_datasets(&c.children))
+            }
+            ChildElement::ThroughputController(c) => {
+                all_rows.extend(load_csv_datasets(&c.children))
+            }
             _ => {}
         }
     }
@@ -82,14 +83,18 @@ pub async fn start_test_plan(plan: TestPlan, app_handle: AppHandle) -> Result<()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?,
     );
 
+    let client_no_redirect = Arc::new(
+        reqwest::Client::builder()
+            .danger_accept_invalid_certs(false)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| format!("Failed to create HTTP client: {}", e))?,
+    );
+
     let total_samples = Arc::new(AtomicU32::new(0));
     let error_count = Arc::new(AtomicU32::new(0));
     let threads_active = Arc::new(AtomicU32::new(0));
-    let total_threads: u32 = plan
-        .thread_groups
-        .iter()
-        .map(|tg| tg.num_threads)
-        .sum();
+    let total_threads: u32 = plan.thread_groups.iter().map(|tg| tg.num_threads).sum();
 
     // Clone app_handle for the status task and for virtual users
     let status_handle = app_handle.clone();
@@ -137,6 +142,7 @@ pub async fn start_test_plan(plan: TestPlan, app_handle: AppHandle) -> Result<()
 
         let tg = Arc::new(tg.clone());
         let client_clone = client.clone();
+        let client_no_redirect_clone = client_no_redirect.clone();
         let app_clone = app_handle.clone();
         let cancel = cancel_token().clone();
         let samples = total_samples.clone();
@@ -147,6 +153,7 @@ pub async fn start_test_plan(plan: TestPlan, app_handle: AppHandle) -> Result<()
         for i in 0..tg.num_threads {
             let handle = tokio::spawn(thread_group::execute_virtual_user(
                 client_clone.clone(),
+                client_no_redirect_clone.clone(),
                 tg.clone(),
                 app_clone.clone(),
                 cancel.clone(),

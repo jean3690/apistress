@@ -85,3 +85,15 @@ export function createDefaultTransactionController(id: string): TransactionContr
     children: [],
   }
 }
+
+export function createDefaultThroughputController(id: string): ThroughputController {
+  return {
+    id,
+    type: 'ThroughputController',
+    name: 'Throughput Controller',
+    enabled: true,
+    throughput: 60,
+    perThread: false,
+    children: [],
+  }
+}

@@ -43,9 +43,17 @@ fn evaluate_response_assertion(
     };
 
     let negate = a.pattern_matching.starts_with("not");
-    let match_type = if negate { &a.pattern_matching[3..] } else { &a.pattern_matching };
+    let match_type = if negate {
+        &a.pattern_matching[3..]
+    } else {
+        &a.pattern_matching
+    };
     // Normalize: "notContains" -> "Contains"
-    let match_type = if match_type.is_empty() { "contains" } else { match_type };
+    let match_type = if match_type.is_empty() {
+        "contains"
+    } else {
+        match_type
+    };
 
     let mut failures: Vec<String> = Vec::new();
     for pattern in &a.patterns {
@@ -62,10 +70,7 @@ fn evaluate_response_assertion(
         if !should_pass {
             failures.push(format!(
                 "Expected '{}' {} '{}' in {}",
-                test_value,
-                a.pattern_matching,
-                pattern,
-                a.test_field
+                test_value, a.pattern_matching, pattern, a.test_field
             ));
         }
     }
@@ -97,12 +102,11 @@ fn evaluate_json_assertion(
         "notExists" => exists,
         "equals" => {
             if let Ok(val) = &parsed {
-                let expected: Result<serde_json::Value, _> = serde_json::from_str(&a.expected_value);
+                let expected: Result<serde_json::Value, _> =
+                    serde_json::from_str(&a.expected_value);
                 match expected {
                     Ok(exp) => val != &exp,
-                    Err(_) => {
-                        val.as_str().map_or(true, |s| s != a.expected_value)
-                    }
+                    Err(_) => val.as_str().is_none_or(|s| s != a.expected_value),
                 }
             } else {
                 true

@@ -1,3 +1,7 @@
+// Fields on these structs are deserialized from JSON and may not be
+// directly read in Rust code (used only through serde).
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -404,7 +408,7 @@ pub struct ListenerConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum ChildElement {
-    HttpSampler(HttpSampler),
+    HttpSampler(Box<HttpSampler>),
     LoopController(LoopController),
     IfController(IfController),
     WhileController(WhileController),
@@ -483,12 +487,30 @@ pub struct TestPlan {
 
 // ---- Default value helpers ----
 
-fn default_true() -> bool { true }
-fn default_protocol() -> String { "https".into() }
-fn default_port() -> u16 { 443 }
-fn default_path() -> String { "/".into() }
-fn default_method() -> String { "GET".into() }
-fn default_timeout() -> u64 { 30000 }
-fn default_max_duration() -> u64 { 3000 }
-fn default_timer_delay() -> u64 { 300 }
-fn default_num_threads() -> u32 { 10 }
+fn default_true() -> bool {
+    true
+}
+fn default_protocol() -> String {
+    "https".into()
+}
+fn default_port() -> u16 {
+    443
+}
+fn default_path() -> String {
+    "/".into()
+}
+fn default_method() -> String {
+    "GET".into()
+}
+fn default_timeout() -> u64 {
+    30000
+}
+fn default_max_duration() -> u64 {
+    3000
+}
+fn default_timer_delay() -> u64 {
+    300
+}
+fn default_num_threads() -> u32 {
+    10
+}

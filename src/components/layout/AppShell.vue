@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { useUIStore } from '@/stores'
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import ToolBar from './ToolBar.vue'
 import StatusBar from './StatusBar.vue'
 import ClassicLayout from '@/components/classic/ClassicLayout.vue'
 import ModernLayout from '@/components/modern/ModernLayout.vue'
 
 const ui = useUIStore()
+useKeyboardShortcuts()
 </script>
 
 <template>

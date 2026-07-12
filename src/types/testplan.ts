@@ -4,7 +4,7 @@ import type { AssertionUnion } from './assertion'
 import type { ConfigUnion } from './config'
 import type { TimerUnion } from './timer'
 import type { ProcessorUnion } from './processor'
-import type { ListenerConfig, SampleResult } from './listener'
+import type { ListenerConfig } from './listener'
 import type { OnErrorAction, KeyValuePair } from './common'
 
 /** ThreadGroup 中 children 可包含的元素类型 */
@@ -64,7 +64,6 @@ export interface TestPlan {
   threadGroups: ThreadGroup[]
   variables: KeyValuePair[]
   listeners: ListenerConfig[]
-  results: SampleResult[]
 }
 
 export function createDefaultTestPlan(): TestPlan {
@@ -147,6 +146,5 @@ export function createDefaultTestPlan(): TestPlan {
       { id: crypto.randomUUID(), type: 'ViewResultsTree', name: 'View Results Tree', enabled: true },
       { id: crypto.randomUUID(), type: 'SummaryReport', name: 'Summary Report', enabled: true },
     ],
-    results: [],
   }
 }

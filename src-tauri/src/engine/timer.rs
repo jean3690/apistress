@@ -9,6 +9,7 @@ pub enum TimerAction {
     None,
 }
 
+#[must_use]
 pub fn evaluate_timer(child: &ChildElement, _variables: &HashMap<String, String>) -> TimerAction {
     match child {
         ChildElement::ConstantTimer(t) => {

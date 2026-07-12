@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { shallowRef, ref, watch } from 'vue'
 
 export type UIMode = 'classic' | 'modern'
 
@@ -21,8 +21,8 @@ function savePrefs(prefs: Record<string, unknown>) {
 
 export const useUIStore = defineStore('ui', () => {
   const saved = loadPrefs()
-  const mode = ref<UIMode>(saved.mode)
-  const activeResultTab = ref(saved.activeResultTab)
+  const mode = shallowRef<UIMode>(saved.mode)
+  const activeResultTab = shallowRef(saved.activeResultTab)
   const classicSplitSizes = ref([25, 50, 25]) // tree | props | results
   const modernSplitSizes = ref([20, 45, 35])  // list | editor | response
 
