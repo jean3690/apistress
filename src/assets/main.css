@@ -1,0 +1,46 @@
+@import 'tw-animate-css';
+@import 'shadcn-vue/tailwind.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+    --background: #1e1e2e;
+    --foreground: #cdd6f4;
+    --card: #313244;
+    --card-foreground: #cdd6f4;
+    --popover: #313244;
+    --popover-foreground: #cdd6f4;
+    --primary: #f0a040;
+    --primary-foreground: #181825;
+    --secondary: #313244;
+    --secondary-foreground: #cdd6f4;
+    --muted: #45475a;
+    --muted-foreground: #6c7086;
+    --accent: #313244;
+    --accent-foreground: #cdd6f4;
+    --destructive: #f38ba8;
+    --destructive-foreground: #1e1e2e;
+    --border: #45475a;
+    --input: #313244;
+    --ring: #f0a040;
+    --radius: 0.375rem;
+    --sidebar: #181825;
+    --sidebar-foreground: #cdd6f4;
+    --sidebar-primary: #f0a040;
+    --sidebar-primary-foreground: #181825;
+    --sidebar-accent: #313244;
+    --sidebar-accent-foreground: #cdd6f4;
+    --sidebar-border: #45475a;
+    --sidebar-ring: #f0a040;
+
+    --success: #4dc9b0;
+    --warning: #f9e2af;
+    --danger: #f38ba8;
+  }
+}

@@ -94,7 +94,7 @@ export function addChildToParent(plan: TestPlan, parentId: string, element: Chil
 function addToContainer(children: ChildElement[], parentId: string, element: ChildElement): boolean {
   for (const child of children) {
     if (child.id === parentId && 'children' in child) {
-      (child as unknown as { children: ChildElement[] }).children.push(element)
+      ;(child as unknown as { children: ChildElement[] }).children.push(element)
       return true
     }
     if ('children' in child) {
@@ -161,13 +161,14 @@ export function collectAllSamplers(plan: TestPlan): ChildElement[] {
   return result
 }
 
-function collectSamplersFromChildren(children: ChildElement[], out: ChildElement[]) {
+export function collectSamplersFromChildren(children: ChildElement[], out: ChildElement[] = []): ChildElement[] {
   for (const child of children) {
-    if (child.type === 'HttpSampler') {
+    if (child.type.endsWith('Sampler')) {
       out.push(child)
     }
     if ('children' in child) {
       collectSamplersFromChildren((child as unknown as { children: ChildElement[] }).children, out)
     }
   }
+  return out
 }

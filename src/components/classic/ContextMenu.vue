@@ -13,6 +13,13 @@
         <span class="menu-arrow">&#9654;</span>
         <div v-show="addSamplerOpen" class="submenu">
           <div class="menu-item" @click="addHttpSampler()">HTTP Request</div>
+          <div class="menu-item" @click="addGraphQlSampler()">GraphQL Request</div>
+          <div class="menu-item" @click="addSseSampler()">SSE Stream</div>
+          <div class="menu-item" @click="addMqttSampler()">MQTT Publish</div>
+          <div class="menu-item" @click="addWebSocketSampler()">WebSocket Request</div>
+          <div class="menu-item" @click="addGrpcSampler()">gRPC Request</div>
+          <div class="menu-item" @click="addTcpSampler()">TCP Request</div>
+          <div class="menu-item" @click="addRedisSampler()">Redis Command</div>
         </div>
       </div>
 
@@ -87,11 +94,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { shallowRef, onMounted, onUnmounted } from 'vue'
 import { useTestPlanStore } from '@/stores'
 import type { TestElementUnion, ChildElement } from '@/types'
 import {
   createDefaultHttpSampler,
+  createDefaultGraphQlSampler,
+  createDefaultSseSampler,
+  createDefaultMqttSampler,
+  createDefaultWebSocketSampler,
+  createDefaultGrpcSampler,
+  createDefaultTcpSampler,
+  createDefaultRedisSampler,
   createDefaultLoopController,
   createDefaultIfController,
   createDefaultWhileController,
@@ -124,12 +138,12 @@ const emit = defineEmits<{
 
 const testPlan = useTestPlanStore()
 
-const addSamplerOpen = ref(false)
-const addControllerOpen = ref(false)
-const addAssertionOpen = ref(false)
-const addTimerOpen = ref(false)
-const addExtractorOpen = ref(false)
-const addConfigOpen = ref(false)
+const addSamplerOpen = shallowRef(false)
+const addControllerOpen = shallowRef(false)
+const addAssertionOpen = shallowRef(false)
+const addTimerOpen = shallowRef(false)
+const addExtractorOpen = shallowRef(false)
+const addConfigOpen = shallowRef(false)
 
 function close() {
   emit('close')
@@ -149,6 +163,27 @@ function newElement(element: ChildElement): ChildElement {
 
 function addHttpSampler() {
   addElement(newElement(createDefaultHttpSampler('')) as unknown as ChildElement)
+}
+function addGraphQlSampler() {
+  addElement(newElement(createDefaultGraphQlSampler('')) as unknown as ChildElement)
+}
+function addSseSampler() {
+  addElement(newElement(createDefaultSseSampler('')) as unknown as ChildElement)
+}
+function addMqttSampler() {
+  addElement(newElement(createDefaultMqttSampler('')) as unknown as ChildElement)
+}
+function addWebSocketSampler() {
+  addElement(newElement(createDefaultWebSocketSampler('')) as unknown as ChildElement)
+}
+function addGrpcSampler() {
+  addElement(newElement(createDefaultGrpcSampler('')) as unknown as ChildElement)
+}
+function addTcpSampler() {
+  addElement(newElement(createDefaultTcpSampler('')) as unknown as ChildElement)
+}
+function addRedisSampler() {
+  addElement(newElement(createDefaultRedisSampler('')) as unknown as ChildElement)
 }
 function addLoopController() {
   addElement(newElement(createDefaultLoopController('')) as unknown as ChildElement)
@@ -229,10 +264,15 @@ function toggleEnabled() {
 function canHaveChildren(): boolean {
   if (!props.node) return false
   const t = props.node.type
-  return t === 'TestPlan' || t === 'ThreadGroup' ||
-    t === 'LoopController' || t === 'IfController' ||
-    t === 'WhileController' || t === 'TransactionController' ||
+  return (
+    t === 'TestPlan' ||
+    t === 'ThreadGroup' ||
+    t === 'LoopController' ||
+    t === 'IfController' ||
+    t === 'WhileController' ||
+    t === 'TransactionController' ||
     t === 'ThroughputController'
+  )
 }
 
 function canDelete(): boolean {
@@ -278,8 +318,8 @@ function menuStyle(): Record<string, string> {
   min-width: 200px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  box-shadow: var(--shadow-lg);
   padding: 4px 0;
   font-size: 12px;
   user-select: none;
@@ -293,12 +333,14 @@ function menuStyle(): Record<string, string> {
 }
 
 .menu-header-type {
-  font-size: 10px;
+  font-size: 9px;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--bg-hover);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.4px;
 }
 
 .menu-header-name {
@@ -316,46 +358,48 @@ function menuStyle(): Record<string, string> {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  padding: 5px 12px;
   cursor: pointer;
   position: relative;
   white-space: nowrap;
+  transition: background 0.08s;
 }
 
 .menu-item:hover {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--bg-deep);
 }
 
 .menu-arrow {
-  font-size: 9px;
+  font-size: 8px;
   color: var(--text-muted);
   margin-left: 16px;
 }
 
 .menu-item:hover .menu-arrow {
-  color: var(--bg-primary);
+  color: var(--bg-deep);
 }
 
 .menu-shortcut {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
   margin-left: 24px;
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 
 .menu-item:hover .menu-shortcut {
-  color: rgba(0, 0, 0, 0.5);
+  color: rgba(0, 0, 0, 0.45);
 }
 
 .submenu {
   position: absolute;
   left: 100%;
   top: -4px;
-  min-width: 180px;
+  min-width: 190px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  box-shadow: var(--shadow-lg);
   padding: 4px 0;
 }
 </style>

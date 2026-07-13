@@ -2,15 +2,19 @@
   <template v-for="child in children" :key="child.id">
     <div
       :class="['tree-node', { selected: selectedId === child.id }]"
-      :style="{ paddingLeft: (depth * 20 + 12) + 'px' }"
+      :style="{ paddingLeft: depth * 20 + 12 + 'px' }"
       @click="emit('select', child)"
-      @contextmenu.prevent.stop="emit('select', child); emit('contextmenu', $event, child)"
+      @contextmenu.prevent.stop="
+        emit('select', child)
+        emit('contextmenu', $event, child)
+      "
     >
       <span
         v-if="hasKids(child)"
         :class="['arrow', { expanded: isExpanded(child.id) }]"
         @click.stop="emit('toggle', child.id)"
-      >▶</span>
+        >▶</span
+      >
       <span v-else class="arrow-spacer"></span>
       <span class="node-icon">{{ getIcon(child.type) }}</span>
       <span class="node-label">{{ child.name }}</span>
@@ -48,13 +52,27 @@ const emit = defineEmits<{
 
 function getIcon(type: string): string {
   const icons: Record<string, string> = {
-    HttpSampler: '▸', LoopController: '↻', IfController: '?',
-    WhileController: '⧖', TransactionController: '▧', ThroughputController: '⇄',
-    ResponseAssertion: '✓', JsonAssertion: '◊', DurationAssertion: '⏱',
-    ConstantTimer: '⏲', UniformRandomTimer: '⚃', GaussianRandomTimer: '≈',
-    RegexExtractor: 'R', JsonExtractor: 'J', BoundaryExtractor: '⊂',
-    HttpDefaults: '⚙', CsvDataSet: '≡', UserVariables: '$',
-    UserParameters: '☺', ViewResultsTree: '≡', SummaryReport: 'Σ',
+    HttpSampler: '▸',
+    LoopController: '↻',
+    IfController: '?',
+    WhileController: '⧖',
+    TransactionController: '▧',
+    ThroughputController: '⇄',
+    ResponseAssertion: '✓',
+    JsonAssertion: '◊',
+    DurationAssertion: '⏱',
+    ConstantTimer: '⏲',
+    UniformRandomTimer: '⚃',
+    GaussianRandomTimer: '≈',
+    RegexExtractor: 'R',
+    JsonExtractor: 'J',
+    BoundaryExtractor: '⊂',
+    HttpDefaults: '⚙',
+    CsvDataSet: '≡',
+    UserVariables: '$',
+    UserParameters: '☺',
+    ViewResultsTree: '≡',
+    SummaryReport: 'Σ',
     AggregateReport: 'Σ',
   }
   return icons[type] || '●'
@@ -84,6 +102,10 @@ function isExpanded(id: string): boolean {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border-left: 2px solid transparent;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
 }
 
 .tree-node:hover {
@@ -91,8 +113,9 @@ function isExpanded(id: string): boolean {
 }
 
 .tree-node.selected {
-  background: var(--accent);
-  color: var(--bg-primary);
+  background: var(--accent-glow);
+  color: var(--text-primary);
+  border-left-color: var(--accent);
 }
 
 .arrow {

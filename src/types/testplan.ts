@@ -1,4 +1,13 @@
-import type { HttpSampler } from './sampler'
+import type {
+  HttpSampler,
+  GraphQlSampler,
+  SseSampler,
+  MqttSampler,
+  WebSocketSampler,
+  GrpcSampler,
+  TcpSampler,
+  RedisSampler,
+} from './sampler'
 import type { ControllerUnion } from './controller'
 import type { AssertionUnion } from './assertion'
 import type { ConfigUnion } from './config'
@@ -10,6 +19,13 @@ import type { OnErrorAction, KeyValuePair } from './common'
 /** ThreadGroup 中 children 可包含的元素类型 */
 export type ChildElement =
   | HttpSampler
+  | GraphQlSampler
+  | SseSampler
+  | MqttSampler
+  | WebSocketSampler
+  | GrpcSampler
+  | TcpSampler
+  | RedisSampler
   | ControllerUnion
   | AssertionUnion
   | ConfigUnion
@@ -28,6 +44,7 @@ export interface ThreadGroup {
   comments?: string
   numThreads: number
   rampUp: number // seconds
+  warmUp: number // seconds, 0 = no warm-up
   loops: number // -1 = forever
   duration: number // seconds, 0 = unlimited
   delay: number // seconds
@@ -45,6 +62,7 @@ export function createDefaultThreadGroup(id: string): ThreadGroup {
     enabled: true,
     numThreads: 10,
     rampUp: 5,
+    warmUp: 0,
     loops: 1,
     duration: 0,
     delay: 0,
@@ -53,6 +71,12 @@ export function createDefaultThreadGroup(id: string): ThreadGroup {
     sameUserOnEachIteration: true,
     children: [],
   }
+}
+
+export interface TestPlanAssertion {
+  metric: 'errorRate' | 'avgResponseTime' | 'throughput' | 'p99'
+  operator: 'lt' | 'gt'
+  value: number
 }
 
 export interface TestPlan {
@@ -64,6 +88,7 @@ export interface TestPlan {
   threadGroups: ThreadGroup[]
   variables: KeyValuePair[]
   listeners: ListenerConfig[]
+  assertions: TestPlanAssertion[]
 }
 
 export function createDefaultTestPlan(): TestPlan {
@@ -87,6 +112,8 @@ export function createDefaultTestPlan(): TestPlan {
     followRedirects: true,
     timeout: 30000,
     useKeepAlive: true,
+    retryCount: 0,
+    retryDelay: 1000,
   }
 
   const postSampler: HttpSampler = {
@@ -113,6 +140,8 @@ export function createDefaultTestPlan(): TestPlan {
     followRedirects: true,
     timeout: 30000,
     useKeepAlive: true,
+    retryCount: 0,
+    retryDelay: 1000,
   }
 
   return {
@@ -129,16 +158,14 @@ export function createDefaultTestPlan(): TestPlan {
         enabled: true,
         numThreads: 5,
         rampUp: 2,
+        warmUp: 0,
         loops: 10,
         duration: 0,
         delay: 0,
         scheduler: false,
         onErrorAction: 'continue',
         sameUserOnEachIteration: true,
-        children: [
-          defaultSampler,
-          postSampler,
-        ],
+        children: [defaultSampler, postSampler],
       },
     ],
     variables: [],
@@ -146,5 +173,6 @@ export function createDefaultTestPlan(): TestPlan {
       { id: crypto.randomUUID(), type: 'ViewResultsTree', name: 'View Results Tree', enabled: true },
       { id: crypto.randomUUID(), type: 'SummaryReport', name: 'Summary Report', enabled: true },
     ],
+    assertions: [],
   }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { reactive } from 'vue'
 import { useTestPlanStore } from '@/stores'
 import type { TestElementUnion } from '@/types'
 import TreeNodeChildren from './TreeNodeChildren.vue'
@@ -11,20 +11,18 @@ const emit = defineEmits<{
 }>()
 
 // Keep track of expanded node IDs
-const expandedIds = ref(new Set<string>())
+const expandedIds = reactive(new Set<string>())
 
 function isExpanded(id: string): boolean {
-  return expandedIds.value.has(id)
+  return expandedIds.has(id)
 }
 
 function toggleExpand(id: string) {
-  const s = expandedIds.value
-  if (s.has(id)) {
-    s.delete(id)
+  if (expandedIds.has(id)) {
+    expandedIds.delete(id)
   } else {
-    s.add(id)
+    expandedIds.add(id)
   }
-  expandedIds.value = new Set(s)
 }
 
 function onNodeClick(node: TestElementUnion) {
@@ -63,10 +61,7 @@ function onArrowClick(e: MouseEvent, id: string) {
         @click="onNodeClick(tg)"
         @contextmenu="onNodeContextMenu($event, tg)"
       >
-        <span
-          :class="['arrow', { expanded: isExpanded(tg.id) }]"
-          @click="onArrowClick($event, tg.id)"
-        >▶</span>
+        <span :class="['arrow', { expanded: isExpanded(tg.id) }]" @click="onArrowClick($event, tg.id)">▶</span>
         <span class="node-icon">▤</span>
         <span class="node-label">{{ tg.name }}</span>
         <span class="node-badge">{{ tg.numThreads }} threads</span>
@@ -82,9 +77,7 @@ function onArrowClick(e: MouseEvent, id: string) {
           @contextmenu="(e, n) => onNodeContextMenu(e, n)"
           @toggle="(id: string) => toggleExpand(id)"
         />
-        <div v-else class="empty-children">
-          Right-click to add elements
-        </div>
+        <div v-else class="empty-children">Right-click to add elements</div>
       </div>
     </div>
 
@@ -100,7 +93,7 @@ function onArrowClick(e: MouseEvent, id: string) {
 .tree-view {
   flex: 1;
   overflow-y: auto;
-  padding: 6px 0;
+  padding: 4px 0;
   user-select: none;
 }
 
@@ -108,16 +101,21 @@ function onArrowClick(e: MouseEvent, id: string) {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 5px 12px;
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border-left: 2px solid transparent;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
 }
 
 .tree-node.root {
   font-weight: 600;
+  font-size: 13px;
 }
 
 .tree-node:hover {
@@ -125,12 +123,13 @@ function onArrowClick(e: MouseEvent, id: string) {
 }
 
 .tree-node.selected {
-  background: var(--accent);
-  color: var(--bg-primary);
+  background: var(--accent-glow);
+  color: var(--text-primary);
+  border-left-color: var(--accent);
 }
 
 .arrow {
-  font-size: 9px;
+  font-size: 8px;
   width: 12px;
   flex-shrink: 0;
   color: var(--text-muted);
@@ -143,10 +142,11 @@ function onArrowClick(e: MouseEvent, id: string) {
 }
 
 .node-icon {
-  font-size: 14px;
-  width: 18px;
+  font-size: 13px;
+  width: 16px;
   text-align: center;
   flex-shrink: 0;
+  opacity: 0.7;
 }
 
 .node-label {
@@ -156,17 +156,10 @@ function onArrowClick(e: MouseEvent, id: string) {
 }
 
 .node-badge {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
   flex-shrink: 0;
-}
-
-.tree-branch {
-  /* container for TG + children */
-}
-
-.tree-children {
-  /* children container */
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 
 .empty-children {
@@ -184,11 +177,16 @@ function onArrowClick(e: MouseEvent, id: string) {
 
 .empty-tree button {
   margin-top: 8px;
-  padding: 4px 12px;
+  padding: 5px 14px;
   border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-radius: 3px;
   background: transparent;
   color: var(--accent);
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.12s;
+}
+.empty-tree button:hover {
+  background: var(--accent-glow);
 }
 </style>

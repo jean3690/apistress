@@ -1,4 +1,31 @@
-import type { TestPlan, ThreadGroup, ChildElement, HttpSampler, LoopController, IfController, TransactionController, ThroughputController, ResponseAssertion, JsonAssertion, DurationAssertion, ConstantTimer, UniformRandomTimer, GaussianRandomTimer, RegexExtractor, JsonExtractor, BoundaryExtractor, UserParameters, KeyValuePair } from '@/types'
+import type {
+  TestPlan,
+  ThreadGroup,
+  ChildElement,
+  HttpSampler,
+  GraphQlSampler,
+  SseSampler,
+  MqttSampler,
+  WebSocketSampler,
+  GrpcSampler,
+  TcpSampler,
+  RedisSampler,
+  LoopController,
+  IfController,
+  TransactionController,
+  ThroughputController,
+  ResponseAssertion,
+  JsonAssertion,
+  DurationAssertion,
+  ConstantTimer,
+  UniformRandomTimer,
+  GaussianRandomTimer,
+  RegexExtractor,
+  JsonExtractor,
+  BoundaryExtractor,
+  UserParameters,
+  KeyValuePair,
+} from '@/types'
 
 /**
  * Parse a JMeter .jmx XML file into an ApiStress TestPlan with proper nested structure.
@@ -22,7 +49,10 @@ export function importJmx(xml: string): TestPlan {
   // Find the top-level <hashTree> under <jmeterTestPlan>
   let topTree: Element | null = null
   for (const child of root.children) {
-    if (child.tagName === 'hashTree') { topTree = child; break }
+    if (child.tagName === 'hashTree') {
+      topTree = child
+      break
+    }
   }
   if (!topTree) throw new Error('Invalid JMX: no top-level hashTree')
 
@@ -39,6 +69,7 @@ export function importJmx(xml: string): TestPlan {
     threadGroups: [],
     variables: [],
     listeners: [],
+    assertions: [],
   }
 
   // Walk top-level elements
@@ -74,6 +105,7 @@ function parseThreadGroup(el: Element): ThreadGroup {
     enabled: getAttr(el, 'enabled') !== 'false',
     numThreads: parseInt(getProp(el, 'ThreadGroup.num_threads') || '10'),
     rampUp: parseInt(getProp(el, 'ThreadGroup.ramp_time') || '5'),
+    warmUp: parseInt(getProp(el, 'ThreadGroup.warmUp') || '0'),
     loops: parseInt(getProp(el, 'LoopController.loops') || '1'),
     duration: parseInt(getProp(el, 'ThreadGroup.duration') || '0'),
     delay: parseInt(getProp(el, 'ThreadGroup.delay') || '0'),
@@ -98,6 +130,27 @@ function parseChildren(hashTree: Element, depth = 0): ChildElement[] {
       case 'HTTPSamplerProxy':
       case 'HttpSampler':
         child = parseHttpSampler(el)
+        break
+      case 'GraphQLSampler':
+        child = parseGraphQlSampler(el)
+        break
+      case 'SseSampler':
+        child = parseSseSampler(el)
+        break
+      case 'MqttSampler':
+        child = parseMqttSampler(el)
+        break
+      case 'WebSocketSampler':
+        child = parseWebSocketSampler(el)
+        break
+      case 'GrpcSampler':
+        child = parseGrpcSampler(el)
+        break
+      case 'TcpSampler':
+        child = parseTcpSampler(el)
+        break
+      case 'RedisSampler':
+        child = parseRedisSampler(el)
         break
       case 'LoopController':
         child = parseLoopController(el)
@@ -188,6 +241,124 @@ function parseHttpSampler(el: Element): HttpSampler {
     followRedirects: getProp(el, 'HTTPSampler.follow_redirects') !== 'false',
     timeout: parseInt(getProp(el, 'HTTPSampler.connect_timeout') || '30000'),
     useKeepAlive: getProp(el, 'HTTPSampler.use_keepalive') !== 'false',
+    retryCount: parseInt(getProp(el, 'HTTPSampler.retryCount') || '0'),
+    retryDelay: parseInt(getProp(el, 'HTTPSampler.retryDelay') || '1000'),
+  }
+}
+
+function parseGraphQlSampler(el: Element): GraphQlSampler {
+  return {
+    id: crypto.randomUUID(),
+    type: 'GraphQlSampler',
+    name: getAttr(el, 'testname') || 'GraphQL Request',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    url: getProp(el, 'GraphQLSampler.url') || '',
+    query: getProp(el, 'GraphQLSampler.query') || '',
+    variables: getProp(el, 'GraphQLSampler.variables') || '{}',
+    headers: parseArgElements(el, 'header'),
+    timeout: parseInt(getProp(el, 'GraphQLSampler.timeout') || '30000'),
+    retryCount: parseInt(getProp(el, 'GraphQLSampler.retryCount') || '0'),
+    retryDelay: parseInt(getProp(el, 'GraphQLSampler.retryDelay') || '1000'),
+  }
+}
+
+function parseSseSampler(el: Element): SseSampler {
+  return {
+    id: crypto.randomUUID(),
+    type: 'SseSampler',
+    name: getAttr(el, 'testname') || 'SSE Stream',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    url: getProp(el, 'SseSampler.url') || '',
+    headers: parseArgElements(el, 'header'),
+    timeout: parseInt(getProp(el, 'SseSampler.timeout') || '30000'),
+    maxEvents: parseInt(getProp(el, 'SseSampler.maxEvents') || '0'),
+    retryCount: parseInt(getProp(el, 'SseSampler.retryCount') || '0'),
+    retryDelay: parseInt(getProp(el, 'SseSampler.retryDelay') || '1000'),
+  }
+}
+
+function parseMqttSampler(el: Element): MqttSampler {
+  return {
+    id: crypto.randomUUID(),
+    type: 'MqttSampler',
+    name: getAttr(el, 'testname') || 'MQTT Publish',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    brokerUrl: getProp(el, 'MqttSampler.brokerUrl') || 'tcp://localhost:1883',
+    clientId: getProp(el, 'MqttSampler.clientId') || '',
+    topic: getProp(el, 'MqttSampler.topic') || '',
+    qos: parseInt(getProp(el, 'MqttSampler.qos') || '0') as 0 | 1 | 2,
+    message: getProp(el, 'MqttSampler.message') || '',
+    timeout: parseInt(getProp(el, 'MqttSampler.timeout') || '30000'),
+    mode: (getProp(el, 'MqttSampler.mode') || 'publish') as 'publish' | 'pubsub',
+    retryCount: parseInt(getProp(el, 'MqttSampler.retryCount') || '0'),
+    retryDelay: parseInt(getProp(el, 'MqttSampler.retryDelay') || '1000'),
+  }
+}
+
+function parseWebSocketSampler(el: Element): WebSocketSampler {
+  return {
+    id: crypto.randomUUID(),
+    type: 'WebSocketSampler',
+    name: getAttr(el, 'testname') || 'WebSocket Request',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    url: getProp(el, 'WebSocketSampler.url') || '',
+    headers: parseArgElements(el, 'header'),
+    message: getProp(el, 'WebSocketSampler.message') || '',
+    timeout: parseInt(getProp(el, 'WebSocketSampler.timeout') || '30000'),
+    mode: (getProp(el, 'WebSocketSampler.mode') || 'sendReceive') as 'connect' | 'sendReceive' | 'keepAlive',
+    retryCount: parseInt(getProp(el, 'WebSocketSampler.retryCount') || '0'),
+    retryDelay: parseInt(getProp(el, 'WebSocketSampler.retryDelay') || '1000'),
+  }
+}
+
+function parseGrpcSampler(el: Element): GrpcSampler {
+  return {
+    id: crypto.randomUUID(),
+    type: 'GrpcSampler',
+    name: getAttr(el, 'testname') || 'gRPC Request',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    endpoint: getProp(el, 'GrpcSampler.endpoint') || 'http://localhost:50051',
+    serviceName: getProp(el, 'GrpcSampler.serviceName') || '',
+    methodName: getProp(el, 'GrpcSampler.methodName') || '',
+    requestJson: getProp(el, 'GrpcSampler.requestJson') || '{}',
+    metadata: parseArgElements(el, 'metadata'),
+    timeout: parseInt(getProp(el, 'GrpcSampler.timeout') || '30000'),
+    useTls: getProp(el, 'GrpcSampler.useTls') === 'true',
+    retryCount: parseInt(getProp(el, 'GrpcSampler.retryCount') || '0'),
+    retryDelay: parseInt(getProp(el, 'GrpcSampler.retryDelay') || '1000'),
+  }
+}
+
+function parseTcpSampler(el: Element): TcpSampler {
+  return {
+    id: crypto.randomUUID(),
+    type: 'TcpSampler',
+    name: getAttr(el, 'testname') || 'TCP Request',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    host: getProp(el, 'TcpSampler.host') || '',
+    port: parseInt(getProp(el, 'TcpSampler.port') || '8080'),
+    payload: getProp(el, 'TcpSampler.payload') || '',
+    payloadType: (getProp(el, 'TcpSampler.payloadType') || 'text') as 'text' | 'hex',
+    timeout: parseInt(getProp(el, 'TcpSampler.timeout') || '30000'),
+    eolByte: parseInt(getProp(el, 'TcpSampler.eolByte') || '10'),
+    retryCount: parseInt(getProp(el, 'TcpSampler.retryCount') || '0'),
+    retryDelay: parseInt(getProp(el, 'TcpSampler.retryDelay') || '1000'),
+  }
+}
+
+function parseRedisSampler(el: Element): RedisSampler {
+  return {
+    id: crypto.randomUUID(),
+    type: 'RedisSampler',
+    name: getAttr(el, 'testname') || 'Redis Command',
+    enabled: getAttr(el, 'enabled') !== 'false',
+    host: getProp(el, 'RedisSampler.host') || 'localhost',
+    port: parseInt(getProp(el, 'RedisSampler.port') || '6379'),
+    password: getProp(el, 'RedisSampler.password') || '',
+    command: getProp(el, 'RedisSampler.command') || 'PING',
+    timeout: parseInt(getProp(el, 'RedisSampler.timeout') || '30000'),
+    retryCount: parseInt(getProp(el, 'RedisSampler.retryCount') || '0'),
+    retryDelay: parseInt(getProp(el, 'RedisSampler.retryDelay') || '1000'),
   }
 }
 
@@ -228,15 +399,20 @@ function parseWhileController(el: Element): ChildElement {
 
 function parseResponseAssertion(el: Element): ResponseAssertion {
   const testFieldMap: Record<string, string> = {
-    '2': 'responseCode', '3': 'responseMessage', '16': 'responseBody',
-    '5': 'responseHeaders', '4': 'requestHeaders', '1': 'url',
+    '2': 'responseCode',
+    '3': 'responseMessage',
+    '16': 'responseBody',
+    '5': 'responseHeaders',
+    '4': 'requestHeaders',
+    '1': 'url',
   }
   return {
     id: crypto.randomUUID(),
     type: 'ResponseAssertion',
     name: getAttr(el, 'testname') || 'Response Assertion',
     enabled: getAttr(el, 'enabled') !== 'false',
-    testField: (testFieldMap[getProp(el, 'Assertion.test_field') || '2'] || 'responseBody') as ResponseAssertion['testField'],
+    testField: (testFieldMap[getProp(el, 'Assertion.test_field') || '2'] ||
+      'responseBody') as ResponseAssertion['testField'],
     patternMatching: mapMatchRule(getProp(el, 'Assertion.test_type') || '2') as ResponseAssertion['patternMatching'],
     patterns: parseStringPropList(el, 'Assertion.ass_test'),
     assumeSuccess: getProp(el, 'Assertion.assume_success') === 'true',
@@ -494,12 +670,18 @@ function parseVariables(hashTree: Element, vars: KeyValuePair[]) {
 
 function mapMatchRule(jmxType: string): string {
   switch (jmxType) {
-    case '2': return 'contains'
-    case '6': return 'notContains'
-    case '1': return 'matches'
-    case '8': return 'equals'
-    case '16': return 'substring'
-    default: return 'contains'
+    case '2':
+      return 'contains'
+    case '6':
+      return 'notContains'
+    case '1':
+      return 'matches'
+    case '8':
+      return 'equals'
+    case '16':
+      return 'substring'
+    default:
+      return 'contains'
   }
 }
 
@@ -514,15 +696,21 @@ export function exportJmx(plan: TestPlan): string {
   lines.push('  <hashTree>')
 
   // TestPlan element
-  pushElement(lines, 2, 'TestPlan', {
-    testname: plan.name,
-    enabled: plan.enabled ? 'true' : 'false',
-    comments: plan.comments || '',
-  }, [
-    stringProp('TestPlan.comments', plan.comments || ''),
-    boolProp('TestPlan.functional_mode', 'false'),
-    boolProp('TestPlan.serialize_threadgroups', 'false'),
-  ])
+  pushElement(
+    lines,
+    2,
+    'TestPlan',
+    {
+      testname: plan.name,
+      enabled: plan.enabled ? 'true' : 'false',
+      comments: plan.comments || '',
+    },
+    [
+      stringProp('TestPlan.comments', plan.comments || ''),
+      boolProp('TestPlan.functional_mode', 'false'),
+      boolProp('TestPlan.serialize_threadgroups', 'false'),
+    ],
+  )
 
   // TestPlan variables
   if (plan.variables.length > 0) {
@@ -559,6 +747,7 @@ function pushThreadGroup(lines: string[], indent: number, tg: ThreadGroup) {
   const props = [
     stringProp('ThreadGroup.num_threads', String(tg.numThreads)),
     stringProp('ThreadGroup.ramp_time', String(tg.rampUp)),
+    longProp('ThreadGroup.warmUp', String(tg.warmUp)),
     longProp('ThreadGroup.duration', String(tg.duration)),
     longProp('ThreadGroup.delay', String(tg.delay)),
     stringProp('ThreadGroup.on_sample_error', tg.onErrorAction || 'continue'),
@@ -579,7 +768,10 @@ function pushThreadGroup(lines: string[], indent: number, tg: ThreadGroup) {
 
 function pushChildElement(lines: string[], indent: number, child: ChildElement) {
   const pad = '  '.repeat(indent)
-  const kids = 'children' in child ? (child as unknown as Record<string, unknown>).children as ChildElement[] | undefined : undefined
+  const kids =
+    'children' in child
+      ? ((child as unknown as Record<string, unknown>).children as ChildElement[] | undefined)
+      : undefined
 
   switch (child.type) {
     case 'HttpSampler': {
@@ -594,7 +786,9 @@ function pushChildElement(lines: string[], indent: number, child: ChildElement) 
       lines.push(`${pad}  <boolProp name="HTTPSampler.follow_redirects">${s.followRedirects}</boolProp>`)
       if (s.body.mode === 'raw' && s.body.raw) {
         lines.push(`${pad}  <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>`)
-        lines.push(`${pad}  <stringProp name="HTTPSampler.content_type">${escXml(s.body.contentType || 'application/json')}</stringProp>`)
+        lines.push(
+          `${pad}  <stringProp name="HTTPSampler.content_type">${escXml(s.body.contentType || 'application/json')}</stringProp>`,
+        )
         lines.push(`${pad}  <stringProp name="HTTPSampler.postBody">${escXml(s.body.raw)}</stringProp>`)
       }
       if (s.body.mode === 'x-www-form-urlencoded' && s.body.urlEncoded && s.body.urlEncoded.length > 0) {
@@ -631,7 +825,9 @@ function pushChildElement(lines: string[], indent: number, child: ChildElement) 
             lines.push(`${pad}    <elementProp name="${escXml(f.filename || f.key)}" elementType="HTTPFileArg">`)
             lines.push(`${pad}      <stringProp name="File.path">${encodedPath}</stringProp>`)
             lines.push(`${pad}      <stringProp name="File.paramname">${escXml(f.key)}</stringProp>`)
-            lines.push(`${pad}      <stringProp name="File.mimetype">${escXml(f.mimeType || 'application/octet-stream')}</stringProp>`)
+            lines.push(
+              `${pad}      <stringProp name="File.mimetype">${escXml(f.mimeType || 'application/octet-stream')}</stringProp>`,
+            )
             lines.push(`${pad}    </elementProp>`)
           }
           lines.push(`${pad}  </collectionProp>`)
@@ -648,6 +844,123 @@ function pushChildElement(lines: string[], indent: number, child: ChildElement) 
         lines.push(`${pad}  </collectionProp>`)
       }
       lines.push(`${pad}</HTTPSamplerProxy>`)
+      break
+    }
+    case 'GraphQlSampler': {
+      const s = child as unknown as GraphQlSampler
+      lines.push(`${pad}<GraphQLSampler testname="${escXml(s.name)}" enabled="${s.enabled}">`)
+      lines.push(`${pad}  <stringProp name="GraphQLSampler.url">${escXml(s.url)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="GraphQLSampler.query">${escXml(s.query)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="GraphQLSampler.variables">${escXml(s.variables)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="GraphQLSampler.timeout">${s.timeout}</stringProp>`)
+      if (s.headers.length > 0) {
+        lines.push(`${pad}  <collectionProp name="GraphQLSampler.headers">`)
+        for (const h of s.headers) {
+          lines.push(`${pad}    <elementProp name="${escXml(h.key)}" elementType="Header">`)
+          lines.push(`${pad}      <stringProp name="Header.name">${escXml(h.key)}</stringProp>`)
+          lines.push(`${pad}      <stringProp name="Header.value">${escXml(h.value)}</stringProp>`)
+          lines.push(`${pad}    </elementProp>`)
+        }
+        lines.push(`${pad}  </collectionProp>`)
+      }
+      lines.push(`${pad}</GraphQLSampler>`)
+      break
+    }
+    case 'SseSampler': {
+      const s = child as unknown as SseSampler
+      lines.push(`${pad}<SseSampler testname="${escXml(s.name)}" enabled="${s.enabled}">`)
+      lines.push(`${pad}  <stringProp name="SseSampler.url">${escXml(s.url)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="SseSampler.timeout">${s.timeout}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="SseSampler.maxEvents">${s.maxEvents}</stringProp>`)
+      if (s.headers.length > 0) {
+        lines.push(`${pad}  <collectionProp name="SseSampler.headers">`)
+        for (const h of s.headers) {
+          lines.push(`${pad}    <elementProp name="${escXml(h.key)}" elementType="Header">`)
+          lines.push(`${pad}      <stringProp name="Header.name">${escXml(h.key)}</stringProp>`)
+          lines.push(`${pad}      <stringProp name="Header.value">${escXml(h.value)}</stringProp>`)
+          lines.push(`${pad}    </elementProp>`)
+        }
+        lines.push(`${pad}  </collectionProp>`)
+      }
+      lines.push(`${pad}</SseSampler>`)
+      break
+    }
+    case 'MqttSampler': {
+      const s = child as unknown as MqttSampler
+      lines.push(`${pad}<MqttSampler testname="${escXml(s.name)}" enabled="${s.enabled}">`)
+      lines.push(`${pad}  <stringProp name="MqttSampler.brokerUrl">${escXml(s.brokerUrl)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="MqttSampler.clientId">${escXml(s.clientId)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="MqttSampler.topic">${escXml(s.topic)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="MqttSampler.qos">${s.qos}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="MqttSampler.message">${escXml(s.message)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="MqttSampler.timeout">${s.timeout}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="MqttSampler.mode">${s.mode}</stringProp>`)
+      lines.push(`${pad}</MqttSampler>`)
+      break
+    }
+    case 'WebSocketSampler': {
+      const s = child as unknown as WebSocketSampler
+      lines.push(`${pad}<WebSocketSampler testname="${escXml(s.name)}" enabled="${s.enabled}">`)
+      lines.push(`${pad}  <stringProp name="WebSocketSampler.url">${escXml(s.url)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="WebSocketSampler.timeout">${s.timeout}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="WebSocketSampler.mode">${s.mode}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="WebSocketSampler.message">${escXml(s.message)}</stringProp>`)
+      if (s.headers.length > 0) {
+        lines.push(`${pad}  <collectionProp name="WebSocketSampler.headers">`)
+        for (const h of s.headers) {
+          lines.push(`${pad}    <elementProp name="${escXml(h.key)}" elementType="Header">`)
+          lines.push(`${pad}      <stringProp name="Header.name">${escXml(h.key)}</stringProp>`)
+          lines.push(`${pad}      <stringProp name="Header.value">${escXml(h.value)}</stringProp>`)
+          lines.push(`${pad}    </elementProp>`)
+        }
+        lines.push(`${pad}  </collectionProp>`)
+      }
+      lines.push(`${pad}</WebSocketSampler>`)
+      break
+    }
+    case 'GrpcSampler': {
+      const s = child as unknown as GrpcSampler
+      lines.push(`${pad}<GrpcSampler testname="${escXml(s.name)}" enabled="${s.enabled}">`)
+      lines.push(`${pad}  <stringProp name="GrpcSampler.endpoint">${escXml(s.endpoint)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="GrpcSampler.serviceName">${escXml(s.serviceName)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="GrpcSampler.methodName">${escXml(s.methodName)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="GrpcSampler.requestJson">${escXml(s.requestJson)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="GrpcSampler.timeout">${s.timeout}</stringProp>`)
+      lines.push(`${pad}  <boolProp name="GrpcSampler.useTls">${s.useTls}</boolProp>`)
+      if (s.metadata.length > 0) {
+        lines.push(`${pad}  <collectionProp name="GrpcSampler.metadata">`)
+        for (const h of s.metadata) {
+          lines.push(`${pad}    <elementProp name="${escXml(h.key)}" elementType="Metadata">`)
+          lines.push(`${pad}      <stringProp name="Metadata.name">${escXml(h.key)}</stringProp>`)
+          lines.push(`${pad}      <stringProp name="Metadata.value">${escXml(h.value)}</stringProp>`)
+          lines.push(`${pad}    </elementProp>`)
+        }
+        lines.push(`${pad}  </collectionProp>`)
+      }
+      lines.push(`${pad}</GrpcSampler>`)
+      break
+    }
+    case 'TcpSampler': {
+      const s = child as unknown as TcpSampler
+      lines.push(`${pad}<TcpSampler testname="${escXml(s.name)}" enabled="${s.enabled}">`)
+      lines.push(`${pad}  <stringProp name="TcpSampler.host">${escXml(s.host)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="TcpSampler.port">${s.port}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="TcpSampler.payload">${escXml(s.payload)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="TcpSampler.payloadType">${s.payloadType}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="TcpSampler.timeout">${s.timeout}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="TcpSampler.eolByte">${s.eolByte}</stringProp>`)
+      lines.push(`${pad}</TcpSampler>`)
+      break
+    }
+    case 'RedisSampler': {
+      const s = child as unknown as RedisSampler
+      lines.push(`${pad}<RedisSampler testname="${escXml(s.name)}" enabled="${s.enabled}">`)
+      lines.push(`${pad}  <stringProp name="RedisSampler.host">${escXml(s.host)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="RedisSampler.port">${s.port}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="RedisSampler.password">${escXml(s.password)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="RedisSampler.command">${escXml(s.command)}</stringProp>`)
+      lines.push(`${pad}  <stringProp name="RedisSampler.timeout">${s.timeout}</stringProp>`)
+      lines.push(`${pad}</RedisSampler>`)
       break
     }
     case 'LoopController': {

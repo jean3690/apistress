@@ -18,6 +18,7 @@ dist-ssr
 .agents
 .claude
 .idea
+scripts
 src-tauri/target
 .DS_Store
 *.suo

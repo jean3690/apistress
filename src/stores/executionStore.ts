@@ -3,6 +3,7 @@ import { shallowRef, ref, computed } from 'vue'
 import type { SampleResult, AggregateStats } from '@/types'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { now } from '@/utils/time'
 
 export type ExecutionStatus = 'idle' | 'running' | 'stopping' | 'completed'
 
@@ -13,16 +14,33 @@ export const useExecutionStore = defineStore('execution', () => {
   const startTime = shallowRef<number | null>(null)
   const threadsActive = shallowRef(0)
   const totalSamples = shallowRef(0)
+  const resultsVersion = shallowRef(0) // bumped after each batch to throttle computed
   const unlistenResult: (() => void)[] = []
+
+  // Live dashboard metrics
+  const statusTick = shallowRef<{
+    threadsActive: number
+    totalSamples: number
+    errorCount: number
+    p50?: number
+    p90?: number
+    p99?: number
+    throughput?: number
+    avgResponseTime?: number
+  } | null>(null)
+
+  // Test-level assertion results
+  const assertionResults = shallowRef<
+    { metric: string; operator: string; expected: number; actual: number; passed: boolean }[]
+  >([])
 
   const isRunning = computed(() => status.value === 'running')
   const isIdle = computed(() => status.value === 'idle')
-  const elapsedSeconds = computed(() => {
-    if (!startTime.value) return 0
-    return ((Date.now() - startTime.value) / 1000).toFixed(1)
-  })
+  const elapsedSeconds = shallowRef(0)
+  let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
   const aggregateByLabel = computed<AggregateStats[]>(() => {
+    void resultsVersion.value // throttle: only recompute once per batch, not once per sample
     const groups = new Map<string, SampleResult[]>()
     for (const r of results.value) {
       const list = groups.get(r.label) || []
@@ -56,34 +74,64 @@ export const useExecutionStore = defineStore('execution', () => {
   })
 
   function clear() {
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer)
+      elapsedTimer = null
+    }
     results.value = []
+    resultsVersion.value = 0
     errorCount.value = 0
     startTime.value = null
+    elapsedSeconds.value = 0
     threadsActive.value = 0
     totalSamples.value = 0
+    statusTick.value = null
+    assertionResults.value = []
   }
 
   async function startTest(planJson: string) {
     clear()
     status.value = 'running'
-    startTime.value = Date.now()
+    startTime.value = now()
+    elapsedTimer = setInterval(() => {
+      if (startTime.value) {
+        elapsedSeconds.value = parseFloat(((now() - startTime.value) / 1000).toFixed(1))
+      }
+    }, 100)
 
-    // Listen for result events from the Rust backend
+    // Listen for batched result events from the Rust backend (emitted every ~100ms)
     try {
-      const unlisten1 = await listen<SampleResult>('test://result', (event) => {
-        results.value.push(event.payload)
-        totalSamples.value++
-        if (!event.payload.success) errorCount.value++
-      })
-      const unlisten2 = await listen<{ status: string; threadsActive: number; totalSamples: number; errorCount: number }>(
-        'test://status',
-        (event) => {
-          threadsActive.value = event.payload.threadsActive
-          totalSamples.value = event.payload.totalSamples
-          errorCount.value = event.payload.errorCount
+      const unlisten1 = await listen<{ results: SampleResult[] }>('test://batch-result', event => {
+        const batch = event.payload.results
+        for (let i = 0; i < batch.length; i++) {
+          results.value.push(batch[i])
+          if (!batch[i].success) errorCount.value++
         }
-      )
-      unlistenResult.push(unlisten1, unlisten2)
+        totalSamples.value += batch.length
+        resultsVersion.value++ // trigger computed recalculation once per batch
+      })
+      const unlisten2 = await listen<{
+        status: string
+        threadsActive: number
+        totalSamples: number
+        errorCount: number
+        p50?: number
+        p90?: number
+        p99?: number
+        throughput?: number
+        avgResponseTime?: number
+      }>('test://status', event => {
+        threadsActive.value = event.payload.threadsActive
+        totalSamples.value = event.payload.totalSamples
+        errorCount.value = event.payload.errorCount
+        statusTick.value = event.payload
+      })
+      const unlisten3 = await listen<{
+        assertions: { metric: string; operator: string; expected: number; actual: number; passed: boolean }[]
+      }>('test://assertion-result', event => {
+        assertionResults.value = event.payload.assertions
+      })
+      unlistenResult.push(unlisten1, unlisten2, unlisten3)
     } catch (_e) {
       // Tauri events won't work in browser-only dev mode, ignore
     }
@@ -91,11 +139,15 @@ export const useExecutionStore = defineStore('execution', () => {
     try {
       await invoke('start_test', { planJson })
       status.value = 'completed'
-      // Send system notification on completion
       sendNotification('Test Completed', `Samples: ${totalSamples.value} | Errors: ${errorCount.value}`)
     } catch (e) {
       status.value = 'idle'
       console.error('Test execution error:', e)
+    } finally {
+      if (elapsedTimer) {
+        clearInterval(elapsedTimer)
+        elapsedTimer = null
+      }
     }
 
     // Clean up listeners
@@ -109,6 +161,10 @@ export const useExecutionStore = defineStore('execution', () => {
       await invoke('stop_test')
     } catch (_e) {
       // ignore
+    }
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer)
+      elapsedTimer = null
     }
     status.value = 'idle'
   }
@@ -124,6 +180,8 @@ export const useExecutionStore = defineStore('execution', () => {
     isIdle,
     elapsedSeconds,
     aggregateByLabel,
+    statusTick,
+    assertionResults,
     clear,
     startTest,
     stopTest,
@@ -133,7 +191,11 @@ export const useExecutionStore = defineStore('execution', () => {
 async function sendNotification(title: string, body: string) {
   try {
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      const { isPermissionGranted, requestPermission, sendNotification: notify } = await import('@tauri-apps/plugin-notification')
+      const {
+        isPermissionGranted,
+        requestPermission,
+        sendNotification: notify,
+      } = await import('@tauri-apps/plugin-notification')
       let granted = await isPermissionGranted()
       if (!granted) {
         const perm = await requestPermission()

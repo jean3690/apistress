@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use reqwest::Client;
-use tauri::AppHandle;
+use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
 use super::assertion;
@@ -13,63 +13,71 @@ use super::result::{ExecutionContext, SampleResult};
 use super::sampler;
 use super::timer::{self, TimerAction};
 
-#[allow(clippy::too_many_arguments)]
-pub async fn execute_virtual_user(
-    client: Arc<Client>,
-    client_no_redirect: Arc<Client>,
-    tg: Arc<ThreadGroup>,
-    app_handle: AppHandle,
-    cancel: Arc<AtomicBool>,
-    thread_index: u32,
-    total_threads: u32,
-    total_samples: Arc<AtomicU32>,
-    error_count: Arc<AtomicU32>,
-    threads_active: Arc<AtomicU32>,
-    csv_rows: Arc<Vec<Vec<(String, String)>>>,
-) {
-    let ctx = ExecutionContext {
-        thread_name: format!("{}-{}", tg.name, thread_index + 1),
-        tg_name: tg.name.clone(),
-        group_threads: tg.num_threads,
-        all_threads: total_threads,
+/// Bundled context for a single virtual user execution.
+pub struct VuContext {
+    pub client: Arc<Client>,
+    pub client_no_redirect: Arc<Client>,
+    pub tg: Arc<ThreadGroup>,
+    pub result_tx: mpsc::UnboundedSender<Vec<SampleResult>>,
+    pub cancel: Arc<AtomicBool>,
+    pub thread_index: u32,
+    pub total_threads: u32,
+    pub total_samples: Arc<AtomicU32>,
+    pub error_count: Arc<AtomicU32>,
+    pub threads_active: Arc<AtomicU32>,
+    pub csv_rows: Arc<Vec<Vec<(String, String)>>>,
+}
+
+pub async fn execute_virtual_user(ctx: VuContext) {
+    let exec_ctx = ExecutionContext {
+        thread_name: format!("{}-{}", ctx.tg.name, ctx.thread_index + 1),
+        tg_name: ctx.tg.name.clone(),
+        group_threads: ctx.tg.num_threads,
+        all_threads: ctx.total_threads,
     };
 
     // Ramp-up delay
-    if tg.ramp_up > 0 && tg.num_threads > 0 {
-        let delay_ms = (thread_index as f64 * tg.ramp_up as f64 / tg.num_threads as f64) * 1000.0;
+    if ctx.tg.ramp_up > 0 && ctx.tg.num_threads > 0 {
+        let delay_ms =
+            (ctx.thread_index as f64 * ctx.tg.ramp_up as f64 / ctx.tg.num_threads as f64) * 1000.0;
         sleep(Duration::from_millis(delay_ms as u64)).await;
     }
 
     // Delay before start
-    if tg.delay > 0 {
-        sleep(Duration::from_secs(tg.delay as u64)).await;
+    if ctx.tg.delay > 0 {
+        sleep(Duration::from_secs(ctx.tg.delay as u64)).await;
     }
 
-    if cancel.load(Ordering::SeqCst) {
+    if ctx.cancel.load(Ordering::Relaxed) {
         return;
     }
 
-    threads_active.fetch_add(1, Ordering::SeqCst);
+    ctx.threads_active.fetch_add(1, Ordering::Relaxed);
 
-    // Execution
-    let iterations = if tg.loops < 0 {
+    // Warm-up: results collected during this period are not sent
+    let warmup_end = if ctx.tg.warm_up > 0 {
+        Some(std::time::Instant::now() + Duration::from_secs(ctx.tg.warm_up as u64))
+    } else {
+        None
+    };
+
+    let iterations = if ctx.tg.loops < 0 {
         u32::MAX
     } else {
-        tg.loops as u32
+        ctx.tg.loops as u32
     };
-    let duration_limit = if tg.duration > 0 {
-        Some(std::time::Instant::now() + Duration::from_secs(tg.duration as u64))
+    let duration_limit = if ctx.tg.duration > 0 {
+        Some(std::time::Instant::now() + Duration::from_secs(ctx.tg.duration as u64))
     } else {
         None
     };
     let csv_idx = Arc::new(AtomicUsize::new(0));
 
     for _iteration in 0..iterations {
-        if cancel.load(Ordering::SeqCst) {
+        if ctx.cancel.load(Ordering::Relaxed) {
             break;
         }
 
-        // Duration check
         if let Some(limit) = duration_limit {
             if std::time::Instant::now() >= limit {
                 break;
@@ -77,56 +85,61 @@ pub async fn execute_virtual_user(
         }
 
         let mut variables: HashMap<String, String> = HashMap::new();
-        variables.insert("__threadNum".to_string(), (thread_index + 1).to_string());
-        // Inject CSV row variables for this iteration
-        if !csv_rows.is_empty() {
-            let idx = csv_idx.fetch_add(1, Ordering::SeqCst) % csv_rows.len();
-            for (key, value) in &csv_rows[idx] {
+        variables.insert("__threadNum".to_string(), (ctx.thread_index + 1).to_string());
+        if !ctx.csv_rows.is_empty() {
+            let idx = csv_idx.fetch_add(1, Ordering::Relaxed) % ctx.csv_rows.len();
+            for (key, value) in &ctx.csv_rows[idx] {
                 variables.insert(key.clone(), value.clone());
             }
         }
 
         let results = execute_children(
-            &client,
-            &client_no_redirect,
-            &tg.children,
+            &ctx.client,
+            &ctx.client_no_redirect,
+            &ctx.tg.children,
             &mut variables,
-            &ctx,
-            &app_handle,
-            &cancel,
+            &exec_ctx,
+            &ctx.cancel,
         )
         .await;
 
+        let in_warmup = warmup_end
+            .map(|end| std::time::Instant::now() < end)
+            .unwrap_or(false);
+
+        if !in_warmup {
+            let _ = ctx.result_tx.send(results.clone());
+        }
+
         for result in &results {
             if result.id.is_empty() {
-                continue; // skipped
+                continue;
             }
-            if result.success {
-                total_samples.fetch_add(1, Ordering::SeqCst);
-            } else {
-                total_samples.fetch_add(1, Ordering::SeqCst);
-                error_count.fetch_add(1, Ordering::SeqCst);
+            super::runner::push_elapsed(result.elapsed);
+            ctx.total_samples.fetch_add(1, Ordering::Relaxed);
+            if !result.success {
+                ctx.error_count.fetch_add(1, Ordering::Relaxed);
             }
 
             if !result.success {
-                match tg.on_error_action.as_str() {
+                match ctx.tg.on_error_action.as_str() {
                     "stopThread" => {
-                        threads_active.fetch_sub(1, Ordering::SeqCst);
+                        ctx.threads_active.fetch_sub(1, Ordering::Relaxed);
                         return;
                     }
                     "stopTest" => {
-                        cancel.store(true, Ordering::SeqCst);
-                        threads_active.fetch_sub(1, Ordering::SeqCst);
+                        ctx.cancel.store(true, Ordering::Relaxed);
+                        ctx.threads_active.fetch_sub(1, Ordering::Relaxed);
                         return;
                     }
                     "startNextLoop" => break,
-                    _ => {} // continue
+                    _ => {}
                 }
             }
         }
     }
 
-    threads_active.fetch_sub(1, Ordering::SeqCst);
+    ctx.threads_active.fetch_sub(1, Ordering::Relaxed);
 }
 
 async fn execute_children(
@@ -135,7 +148,6 @@ async fn execute_children(
     children: &[ChildElement],
     variables: &mut HashMap<String, String>,
     ctx: &ExecutionContext,
-    app_handle: &AppHandle,
     cancel: &Arc<AtomicBool>,
 ) -> Vec<SampleResult> {
     let mut results = Vec::new();
@@ -155,7 +167,6 @@ async fn execute_children(
         children,
         variables,
         ctx,
-        app_handle,
         cancel,
         &mut loop_counts,
         &mut last_sampler_result,
@@ -175,7 +186,6 @@ async fn execute_level(
     children: &[ChildElement],
     variables: &mut HashMap<String, String>,
     ctx: &ExecutionContext,
-    app_handle: &AppHandle,
     cancel: &Arc<AtomicBool>,
     loop_counts: &mut HashMap<String, u32>,
     last_sampler_result: &mut Option<SampleResult>,
@@ -185,7 +195,7 @@ async fn execute_level(
 ) {
     let mut i = 0isize;
     while i < children.len() as isize {
-        if cancel.load(Ordering::SeqCst) {
+        if cancel.load(Ordering::Relaxed) {
             break;
         }
 
@@ -205,11 +215,135 @@ async fn execute_level(
                 } else {
                     client_no_redirect
                 };
-                let result =
-                    sampler::execute_sampler(active_client, &sampler, variables, ctx, app_handle)
+                let mut result =
+                    sampler::execute_sampler(active_client, &sampler, variables, ctx)
                         .await;
+                // Retry on failure
+                for _ in 0..s.retry_count {
+                    if result.success { break; }
+                    sleep(Duration::from_millis(s.retry_delay)).await;
+                    result = sampler::execute_sampler(active_client, &sampler, variables, ctx).await;
+                }
                 *last_sampler_result = Some(result.clone());
-                // Don't add skipped results
+                if !result.id.is_empty() {
+                    results.push(result);
+                }
+            }
+
+            ChildElement::GraphQlSampler(s) => {
+                if !s.enabled {
+                    continue;
+                }
+                let mut result =
+                    sampler::execute_graphql_sampler(client, s, variables, ctx).await;
+                for _ in 0..s.retry_count {
+                    if result.success { break; }
+                    sleep(Duration::from_millis(s.retry_delay)).await;
+                    result = sampler::execute_graphql_sampler(client, s, variables, ctx).await;
+                }
+                *last_sampler_result = Some(result.clone());
+                if !result.id.is_empty() {
+                    results.push(result);
+                }
+            }
+
+            ChildElement::SseSampler(s) => {
+                if !s.enabled {
+                    continue;
+                }
+                let mut result =
+                    sampler::execute_sse_sampler(client, s, variables, ctx).await;
+                for _ in 0..s.retry_count {
+                    if result.success { break; }
+                    sleep(Duration::from_millis(s.retry_delay)).await;
+                    result = sampler::execute_sse_sampler(client, s, variables, ctx).await;
+                }
+                *last_sampler_result = Some(result.clone());
+                if !result.id.is_empty() {
+                    results.push(result);
+                }
+            }
+
+            ChildElement::MqttSampler(s) => {
+                if !s.enabled {
+                    continue;
+                }
+                let mut result =
+                    sampler::execute_mqtt_sampler(s, variables, ctx).await;
+                for _ in 0..s.retry_count {
+                    if result.success { break; }
+                    sleep(Duration::from_millis(s.retry_delay)).await;
+                    result = sampler::execute_mqtt_sampler(s, variables, ctx).await;
+                }
+                *last_sampler_result = Some(result.clone());
+                if !result.id.is_empty() {
+                    results.push(result);
+                }
+            }
+
+            ChildElement::WebSocketSampler(s) => {
+                if !s.enabled {
+                    continue;
+                }
+                let mut result =
+                    sampler::execute_websocket_sampler(s, variables, ctx).await;
+                for _ in 0..s.retry_count {
+                    if result.success { break; }
+                    sleep(Duration::from_millis(s.retry_delay)).await;
+                    result = sampler::execute_websocket_sampler(s, variables, ctx).await;
+                }
+                *last_sampler_result = Some(result.clone());
+                if !result.id.is_empty() {
+                    results.push(result);
+                }
+            }
+
+            ChildElement::GrpcSampler(s) => {
+                if !s.enabled {
+                    continue;
+                }
+                let mut result =
+                    sampler::execute_grpc_sampler(s, variables, ctx).await;
+                for _ in 0..s.retry_count {
+                    if result.success { break; }
+                    sleep(Duration::from_millis(s.retry_delay)).await;
+                    result = sampler::execute_grpc_sampler(s, variables, ctx).await;
+                }
+                *last_sampler_result = Some(result.clone());
+                if !result.id.is_empty() {
+                    results.push(result);
+                }
+            }
+
+            ChildElement::TcpSampler(s) => {
+                if !s.enabled {
+                    continue;
+                }
+                let mut result =
+                    sampler::execute_tcp_sampler(s, variables, ctx).await;
+                for _ in 0..s.retry_count {
+                    if result.success { break; }
+                    sleep(Duration::from_millis(s.retry_delay)).await;
+                    result = sampler::execute_tcp_sampler(s, variables, ctx).await;
+                }
+                *last_sampler_result = Some(result.clone());
+                if !result.id.is_empty() {
+                    results.push(result);
+                }
+            }
+
+            ChildElement::RedisSampler(s) => {
+                if !s.enabled {
+                    continue;
+                }
+                let mut result =
+                    sampler::execute_redis_sampler(s, variables, ctx).await;
+                for _ in 0..s.retry_count {
+                    if result.success { break; }
+                    sleep(Duration::from_millis(s.retry_delay)).await;
+                    result = sampler::execute_redis_sampler(s, variables, ctx).await;
+                }
+                *last_sampler_result = Some(result.clone());
                 if !result.id.is_empty() {
                     results.push(result);
                 }
@@ -238,7 +372,6 @@ async fn execute_level(
                             &ctrl_children,
                             variables,
                             ctx,
-                            app_handle,
                             cancel,
                             loop_counts,
                             last_sampler_result,

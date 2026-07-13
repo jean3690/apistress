@@ -1,93 +1,106 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useExecutionStore } from '@/stores'
+import { formatElapsed } from '@/utils/time'
 
 const execution = useExecutionStore()
+
+const errorRate = computed(() => {
+  if (execution.totalSamples === 0) return '0.0'
+  return ((execution.errorCount / execution.totalSamples) * 100).toFixed(1)
+})
 </script>
 
 <template>
-  <div class="statusbar">
-    <div class="status-left">
+  <div
+    class="flex items-center justify-between px-14px h-26px min-h-26px bg-deep border-t border-outline text-11px select-none"
+  >
+    <div class="flex items-center gap-2">
       <span
-        :class="['status-indicator', execution.status]"
+        class="w-6px h-6px rounded-full shrink-0"
+        :class="{
+          'bg-muted': execution.status === 'idle',
+          'bg-accent animate-dot-pulse': execution.status === 'running',
+          'bg-warning animate-dot-pulse-fast': execution.status === 'stopping',
+          'bg-accent-cool': execution.status === 'completed',
+        }"
       />
-      <span class="status-text">{{ execution.status.toUpperCase() }}</span>
+      <span class="text-10px font-semibold text-secondary tracking-wider">{{ execution.status.toUpperCase() }}</span>
     </div>
-    <div class="status-center">
-      <span class="stat-item">
-        Threads: <strong>{{ execution.threadsActive }}</strong>
-      </span>
-      <span class="stat-item">
-        Samples: <strong>{{ execution.totalSamples }}</strong>
-      </span>
-      <span class="stat-item">
-        Errors: <strong class="error">{{ execution.errorCount }}</strong>
-      </span>
-      <span class="stat-item" v-if="execution.status === 'running'">
-        Elapsed: <strong>{{ execution.elapsedSeconds }}s</strong>
-      </span>
+
+    <div class="flex items-center gap-0.5">
+      <div class="metric">
+        <span class="metric-label">Threads</span>
+        <span class="metric-value">{{ execution.threadsActive }}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Samples</span>
+        <span class="metric-value">{{ execution.totalSamples.toLocaleString() }}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Errors</span>
+        <span class="metric-value" :class="{ 'text-danger': execution.errorCount > 0 }">{{
+          execution.errorCount
+        }}</span>
+      </div>
+      <div v-if="execution.status === 'running'" class="metric">
+        <span class="metric-label">Elapsed</span>
+        <span class="metric-value">{{ formatElapsed(execution.elapsedSeconds) }}</span>
+      </div>
     </div>
-    <div class="status-right">
-      <span class="stat-item">
-        Error Rate:
-        <strong :class="{ error: execution.errorCount > 0 }">
-          {{ execution.totalSamples > 0
-            ? ((execution.errorCount / execution.totalSamples) * 100).toFixed(1) + '%'
-            : '0%' }}
-        </strong>
-      </span>
+
+    <div class="flex items-center gap-1">
+      <div class="metric">
+        <span class="metric-label">Error Rate</span>
+        <span class="metric-value" :class="{ 'text-danger': execution.errorCount > 0 }">{{ errorRate }}%</span>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.statusbar {
+.metric {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  height: 28px;
-  min-height: 28px;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  user-select: none;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0 8px;
+  border-left: 1px solid var(--border);
 }
-
-.status-left,
-.status-center,
-.status-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+.metric:first-child {
+  border-left: none;
 }
-
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
+.metric-label {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
-
-.status-indicator.idle { background: var(--text-muted); }
-.status-indicator.running { background: var(--success); animation: pulse 1s infinite; }
-.status-indicator.stopping { background: var(--warning); animation: pulse 0.5s infinite; }
-.status-indicator.completed { background: var(--accent); }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-.stat-item {
-  color: var(--text-secondary);
-}
-
-.stat-item strong {
-  color: var(--text-primary);
+.metric-value {
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  min-width: 32px;
+  text-align: right;
 }
 
-.stat-item strong.error {
-  color: var(--danger);
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 var(--accent-glow);
+  }
+  50% {
+    opacity: 0.5;
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+.animate-dot-pulse {
+  animation: dot-pulse 1.5s ease-in-out infinite;
+}
+.animate-dot-pulse-fast {
+  animation: dot-pulse 0.6s ease-in-out infinite;
 }
 </style>

@@ -83,8 +83,202 @@ pub struct HttpSampler {
     pub follow_redirects: bool,
     #[serde(default = "default_timeout")]
     pub timeout: u64,
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
     #[serde(default = "default_true")]
     pub use_keep_alive: bool,
+}
+
+// ---- GraphQL Sampler ----
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphQlSampler {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub query: String,
+    #[serde(default)]
+    pub variables: String,
+    #[serde(default)]
+    pub headers: Vec<KeyValuePair>,
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
+}
+
+// ---- SSE Sampler ----
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SseSampler {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub headers: Vec<KeyValuePair>,
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
+    #[serde(default)]
+    pub max_events: u32,
+}
+
+// ---- MQTT Sampler ----
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MqttSampler {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub broker_url: String,
+    #[serde(default)]
+    pub client_id: String,
+    #[serde(default)]
+    pub topic: String,
+    #[serde(default = "default_qos")]
+    pub qos: u8,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
+    #[serde(default)]
+    pub mode: String,
+}
+
+// ---- WebSocket Sampler ----
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebSocketSampler {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub headers: Vec<KeyValuePair>,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
+    #[serde(default)]
+    pub mode: String,
+}
+
+// ---- gRPC Sampler ----
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrpcSampler {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub endpoint: String,
+    #[serde(default)]
+    pub service_name: String,
+    #[serde(default)]
+    pub method_name: String,
+    #[serde(default)]
+    pub request_json: String,
+    #[serde(default)]
+    pub metadata: Vec<KeyValuePair>,
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
+    #[serde(default = "default_true")]
+    pub use_tls: bool,
+}
+
+// ---- TCP Sampler ----
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TcpSampler {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default = "default_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub payload: String,
+    #[serde(default)]
+    pub payload_type: String,
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
+    #[serde(default = "default_eol")]
+    pub eol_byte: u8,
+}
+
+// ---- Redis Sampler ----
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedisSampler {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default = "default_redis_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub command: String,
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
 }
 
 // ---- Controllers ----
@@ -409,6 +603,13 @@ pub struct ListenerConfig {
 #[serde(tag = "type")]
 pub enum ChildElement {
     HttpSampler(Box<HttpSampler>),
+    GraphQlSampler(Box<GraphQlSampler>),
+    SseSampler(Box<SseSampler>),
+    MqttSampler(Box<MqttSampler>),
+    WebSocketSampler(Box<WebSocketSampler>),
+    GrpcSampler(Box<GrpcSampler>),
+    TcpSampler(Box<TcpSampler>),
+    RedisSampler(Box<RedisSampler>),
     LoopController(LoopController),
     IfController(IfController),
     WhileController(WhileController),
@@ -450,6 +651,8 @@ pub struct ThreadGroup {
     #[serde(default)]
     pub ramp_up: u32,
     #[serde(default)]
+    pub warm_up: u32,
+    #[serde(default)]
     pub loops: i32,
     #[serde(default)]
     pub duration: u32,
@@ -469,6 +672,14 @@ pub struct ThreadGroup {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TestPlanAssertion {
+    pub metric: String,
+    pub operator: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestPlan {
     pub id: String,
     #[serde(default)]
@@ -483,6 +694,8 @@ pub struct TestPlan {
     pub variables: Vec<KeyValuePair>,
     #[serde(default)]
     pub listeners: Vec<ListenerConfig>,
+    #[serde(default)]
+    pub assertions: Vec<TestPlanAssertion>,
 }
 
 // ---- Default value helpers ----
@@ -510,6 +723,18 @@ fn default_max_duration() -> u64 {
 }
 fn default_timer_delay() -> u64 {
     300
+}
+fn default_retry_delay() -> u64 {
+    1000
+}
+fn default_qos() -> u8 {
+    0
+}
+fn default_eol() -> u8 {
+    10
+}
+fn default_redis_port() -> u16 {
+    6379
 }
 fn default_num_threads() -> u32 {
     10
