@@ -3,6 +3,8 @@ import { shallowRef, computed, watch } from 'vue'
 import { useExecutionStore, useTestPlanStore } from '@/stores'
 import { formatElapsed } from '@/utils/time'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Play, Square } from '@lucide/vue'
 
 const exec = useExecutionStore()
@@ -91,122 +93,76 @@ function stopTest() {
       class="border-t border-border max-h-[260px] overflow-y-auto bg-background"
     >
       <div class="grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-2 p-3">
-        <div class="bg-surface border border-border px-3.5 py-3 text-center">
-          <div class="text-[22px] font-bold font-mono text-primary">{{ exec.totalSamples }}</div>
-          <div class="text-[9px] text-muted-foreground uppercase mt-1 tracking-wider font-medium">Total Samples</div>
-        </div>
-        <div
-          class="bg-surface border px-3.5 py-3 text-center"
-          :class="exec.errorCount > 0 ? 'border-destructive/25' : 'border-border'"
+        <Card>
+          <CardContent class="flex flex-col items-center py-3">
+            <span class="text-[22px] font-bold font-mono text-primary">{{ exec.totalSamples }}</span>
+            <span class="text-[9px] text-muted-foreground uppercase mt-1 tracking-wider font-medium"
+              >Total Samples</span
+            >
+          </CardContent>
+        </Card>
+        <Card :class="exec.errorCount > 0 ? 'border-destructive/25' : ''">
+          <CardContent class="flex flex-col items-center py-3">
+            <span
+              class="text-[22px] font-bold font-mono"
+              :class="exec.errorCount > 0 ? 'text-destructive' : 'text-primary'"
+              >{{ exec.errorCount }}</span
+            >
+            <span class="text-[9px] text-muted-foreground uppercase mt-1 tracking-wider font-medium">Errors</span>
+          </CardContent>
+        </Card>
+        <Card
+          v-for="m in [
+            { label: 'Median (p50)', value: tick?.p50, unit: 'ms' },
+            { label: 'p99', value: tick?.p99, unit: 'ms' },
+            { label: 'Throughput', value: tick?.throughput?.toFixed(1), unit: '/s' },
+            { label: 'Avg Response', value: tick?.avgResponseTime, unit: 'ms' },
+          ]"
+          :key="m.label"
         >
-          <div
-            class="text-[22px] font-bold font-mono"
-            :class="exec.errorCount > 0 ? 'text-destructive' : 'text-primary'"
-          >
-            {{ exec.errorCount }}
-          </div>
-          <div class="text-[9px] text-muted-foreground uppercase mt-1 tracking-wider font-medium">Errors</div>
-        </div>
-        <div class="bg-surface border border-border px-3.5 py-3 text-center">
-          <div class="text-[22px] font-bold font-mono text-primary">
-            {{ tick?.p50 ?? '-' }}<span class="text-xs font-normal text-muted-foreground ml-0.5">ms</span>
-          </div>
-          <div class="text-[9px] text-muted-foreground uppercase mt-1 tracking-wider font-medium">Median (p50)</div>
-        </div>
-        <div class="bg-surface border border-border px-3.5 py-3 text-center">
-          <div class="text-[22px] font-bold font-mono text-primary">
-            {{ tick?.p99 ?? '-' }}<span class="text-xs font-normal text-muted-foreground ml-0.5">ms</span>
-          </div>
-          <div class="text-[9px] text-muted-foreground uppercase mt-1 tracking-wider font-medium">p99</div>
-        </div>
-        <div class="bg-surface border border-border px-3.5 py-3 text-center">
-          <div class="text-[22px] font-bold font-mono text-primary">
-            {{ tick?.throughput?.toFixed(1) ?? '-'
-            }}<span class="text-xs font-normal text-muted-foreground ml-0.5">/s</span>
-          </div>
-          <div class="text-[9px] text-muted-foreground uppercase mt-1 tracking-wider font-medium">Throughput</div>
-        </div>
-        <div class="bg-surface border border-border px-3.5 py-3 text-center">
-          <div class="text-[22px] font-bold font-mono text-primary">
-            {{ tick?.avgResponseTime ?? '-' }}<span class="text-xs font-normal text-muted-foreground ml-0.5">ms</span>
-          </div>
-          <div class="text-[9px] text-muted-foreground uppercase mt-1 tracking-wider font-medium">Avg Response</div>
-        </div>
+          <CardContent class="flex flex-col items-center py-3">
+            <span class="text-[22px] font-bold font-mono text-primary">
+              {{ m.value ?? '-' }}<span class="text-xs font-normal text-muted-foreground ml-0.5">{{ m.unit }}</span>
+            </span>
+            <span class="text-[9px] text-muted-foreground uppercase mt-1 tracking-wider font-medium">{{
+              m.label
+            }}</span>
+          </CardContent>
+        </Card>
       </div>
 
-      <table
-        v-if="aggregateRows.length"
-        class="w-full border-collapse text-[11px] mx-3 mb-3"
-        style="width: calc(100% - 24px)"
-      >
-        <thead>
-          <tr>
-            <th
-              class="text-left px-2 py-1 text-muted-foreground font-semibold border-b-2 border-border text-[9px] uppercase tracking-wider"
-            >
-              Label
-            </th>
-            <th
-              class="text-left px-2 py-1 text-muted-foreground font-semibold border-b-2 border-border text-[9px] uppercase tracking-wider"
-            >
-              Samples
-            </th>
-            <th
-              class="text-left px-2 py-1 text-muted-foreground font-semibold border-b-2 border-border text-[9px] uppercase tracking-wider"
-            >
-              Avg
-            </th>
-            <th
-              class="text-left px-2 py-1 text-muted-foreground font-semibold border-b-2 border-border text-[9px] uppercase tracking-wider"
-            >
-              Min
-            </th>
-            <th
-              class="text-left px-2 py-1 text-muted-foreground font-semibold border-b-2 border-border text-[9px] uppercase tracking-wider"
-            >
-              Max
-            </th>
-            <th
-              class="text-left px-2 py-1 text-muted-foreground font-semibold border-b-2 border-border text-[9px] uppercase tracking-wider"
-            >
-              p90
-            </th>
-            <th
-              class="text-left px-2 py-1 text-muted-foreground font-semibold border-b-2 border-border text-[9px] uppercase tracking-wider"
-            >
-              p99
-            </th>
-            <th
-              class="text-left px-2 py-1 text-muted-foreground font-semibold border-b-2 border-border text-[9px] uppercase tracking-wider"
-            >
-              Error %
-            </th>
-            <th
-              class="text-left px-2 py-1 text-muted-foreground font-semibold border-b-2 border-border text-[9px] uppercase tracking-wider"
-            >
-              Req/s
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in aggregateRows" :key="row.label">
-            <td class="px-2 py-0.5 border-b border-white/3 font-semibold text-foreground">{{ row.label }}</td>
-            <td class="px-2 py-0.5 border-b border-white/3 font-mono">{{ row.count }}</td>
-            <td class="px-2 py-0.5 border-b border-white/3 font-mono">{{ row.avg }}ms</td>
-            <td class="px-2 py-0.5 border-b border-white/3 font-mono">{{ row.min }}ms</td>
-            <td class="px-2 py-0.5 border-b border-white/3 font-mono">{{ row.max }}ms</td>
-            <td class="px-2 py-0.5 border-b border-white/3 font-mono">{{ row.p90 }}ms</td>
-            <td class="px-2 py-0.5 border-b border-white/3 font-mono">{{ row.p99 }}ms</td>
-            <td
-              class="px-2 py-0.5 border-b border-white/3 font-mono"
-              :class="{ 'text-destructive font-semibold': row.errorRate > 0 }"
-            >
-              {{ row.errorRate }}%
-            </td>
-            <td class="px-2 py-0.5 border-b border-white/3 font-mono">{{ row.throughput?.toFixed(1) }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-if="aggregateRows.length" class="px-3 pb-3">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead class="text-[9px]">Label</TableHead>
+              <TableHead class="text-[9px]">Samples</TableHead>
+              <TableHead class="text-[9px]">Avg</TableHead>
+              <TableHead class="text-[9px]">Min</TableHead>
+              <TableHead class="text-[9px]">Max</TableHead>
+              <TableHead class="text-[9px]">p90</TableHead>
+              <TableHead class="text-[9px]">p99</TableHead>
+              <TableHead class="text-[9px]">Error %</TableHead>
+              <TableHead class="text-[9px]">Req/s</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-for="row in aggregateRows" :key="row.label">
+              <TableCell class="font-semibold">{{ row.label }}</TableCell>
+              <TableCell class="font-mono">{{ row.count }}</TableCell>
+              <TableCell class="font-mono">{{ row.avg }}ms</TableCell>
+              <TableCell class="font-mono">{{ row.min }}ms</TableCell>
+              <TableCell class="font-mono">{{ row.max }}ms</TableCell>
+              <TableCell class="font-mono">{{ row.p90 }}ms</TableCell>
+              <TableCell class="font-mono">{{ row.p99 }}ms</TableCell>
+              <TableCell class="font-mono" :class="{ 'text-destructive font-semibold': row.errorRate > 0 }"
+                >{{ row.errorRate }}%</TableCell
+              >
+              <TableCell class="font-mono">{{ row.throughput?.toFixed(1) }}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
 
       <div v-if="exec.assertionResults.length" class="px-3 pb-3">
         <div class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">

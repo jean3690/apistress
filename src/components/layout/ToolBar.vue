@@ -4,6 +4,8 @@ import { useTestPlanStore, useExecutionStore } from '@/stores'
 import { useFileIO } from '@/composables/useFileIO'
 import { importJmx, exportJmx } from '@/utils/jmx'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Plus, FolderOpen, Save, Play, Square, X, FileUp, FileDown, Circle, CircleDot } from '@lucide/vue'
 
 const testPlan = useTestPlanStore()
@@ -74,80 +76,113 @@ function onStop() {
 </script>
 
 <template>
-  <div
-    class="flex items-center justify-between px-3.5 h-[42px] min-h-[42px] bg-[#181825] border-b border-border select-none"
-  >
-    <div class="flex items-center gap-1">
-      <span class="font-bold text-[13px] tracking-wider text-foreground mr-1.5">
-        <span class="text-primary">&#9670;</span> ApiStress
-      </span>
+  <TooltipProvider>
+    <div
+      class="flex items-center justify-between px-3.5 h-[42px] min-h-[42px] bg-[#181825] border-b border-border select-none"
+    >
+      <div class="flex items-center gap-1">
+        <span class="font-bold text-[13px] tracking-wider text-foreground mr-1.5">
+          <span class="text-primary">&#9670;</span> ApiStress
+        </span>
 
-      <span class="w-px h-[18px] bg-border mx-1.5" />
+        <Separator orientation="vertical" class="h-[18px] mx-1.5" />
 
-      <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="onNew">
-        <Plus class="size-3.5" /> New
-      </Button>
-      <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="onLoad">
-        <FolderOpen class="size-3.5" /> Open
-      </Button>
-      <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="onSave">
-        <Save class="size-3.5" /> Save
-      </Button>
+        <Tooltip
+          v-for="btn in [
+            { fn: onNew, icon: Plus, label: 'New', tip: 'New Test Plan' },
+            { fn: onLoad, icon: FolderOpen, label: 'Open', tip: 'Open Test Plan' },
+            { fn: onSave, icon: Save, label: 'Save', tip: 'Save Test Plan' },
+          ]"
+          :key="btn.label"
+        >
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="btn.fn">
+              <component :is="btn.icon" class="size-3.5" /> {{ btn.label }}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ btn.tip }}</TooltipContent>
+        </Tooltip>
 
-      <span v-if="fileState.lastStatus || importMessage" class="text-success text-[10px] ml-1 font-medium">
-        {{ fileState.lastStatus || importMessage }}
-      </span>
-      <span
-        v-else-if="fileState.currentPath"
-        class="text-muted-foreground text-[10px] ml-1 max-w-[120px] truncate"
-        :title="fileState.currentPath"
-        >{{ fileState.currentPath.split(/[/\\]/).pop() }}</span
-      >
+        <span v-if="fileState.lastStatus || importMessage" class="text-success text-[10px] ml-1 font-medium">
+          {{ fileState.lastStatus || importMessage }}
+        </span>
+        <span
+          v-else-if="fileState.currentPath"
+          class="text-muted-foreground text-[10px] ml-1 max-w-[120px] truncate"
+          :title="fileState.currentPath"
+          >{{ fileState.currentPath.split(/[/\\]/).pop() }}</span
+        >
 
-      <span class="w-px h-[18px] bg-border mx-1.5" />
+        <Separator orientation="vertical" class="h-[18px] mx-1.5" />
 
-      <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="onImportJmx">
-        <FileUp class="size-3.5" /> JMX
-      </Button>
-      <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="onExportJmx">
-        <FileDown class="size-3.5" /> JMX
-      </Button>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="onImportJmx">
+              <FileUp class="size-3.5" /> JMX
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Import JMX</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="onExportJmx">
+              <FileDown class="size-3.5" /> JMX
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Export JMX</TooltipContent>
+        </Tooltip>
 
-      <span class="w-px h-[18px] bg-border mx-1.5" />
+        <Separator orientation="vertical" class="h-[18px] mx-1.5" />
 
-      <Button
-        variant="ghost"
-        size="sm"
-        class="h-7 gap-1 text-xs font-semibold text-primary hover:bg-accent-glow"
-        :disabled="execution.isRunning"
-        @click="onRun"
-      >
-        <Play class="size-3 fill-primary" /> Run
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        class="h-7 gap-1 text-xs font-semibold text-danger hover:bg-danger-glow"
-        :disabled="!execution.isRunning"
-        @click="onStop"
-      >
-        <Square class="size-3 fill-danger" /> Stop
-      </Button>
-      <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="execution.clear()">
-        <X class="size-3.5" /> Clear
-      </Button>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 gap-1 text-xs font-semibold text-primary hover:bg-accent-glow"
+              :disabled="execution.isRunning"
+              @click="onRun"
+            >
+              <Play class="size-3 fill-primary" /> Run
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Run Test</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 gap-1 text-xs font-semibold text-danger hover:bg-danger-glow"
+              :disabled="!execution.isRunning"
+              @click="onStop"
+            >
+              <Square class="size-3 fill-danger" /> Stop
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Stop Test</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="sm" class="h-7 gap-1 text-xs font-medium" @click="execution.clear()">
+              <X class="size-3.5" /> Clear
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Clear Results</TooltipContent>
+        </Tooltip>
 
-      <span class="w-px h-[18px] bg-border mx-1.5" />
+        <Separator orientation="vertical" class="h-[18px] mx-1.5" />
 
-      <Button
-        variant="ghost"
-        size="icon"
-        class="h-7 w-7"
-        :title="testPlan.dirty ? 'Unsaved changes' : 'No unsaved changes'"
-      >
-        <CircleDot v-if="testPlan.dirty" class="size-4 text-warning" />
-        <Circle v-else class="size-4 text-muted-foreground" />
-      </Button>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="icon" class="h-7 w-7">
+              <CircleDot v-if="testPlan.dirty" class="size-4 text-warning" />
+              <Circle v-else class="size-4 text-muted-foreground" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ testPlan.dirty ? 'Unsaved changes' : 'No unsaved changes' }}</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
-  </div>
+  </TooltipProvider>
 </template>
