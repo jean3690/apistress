@@ -11,10 +11,33 @@ export function useKeyboardShortcuts() {
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return
     if (target.isContentEditable) return
 
-    // Ctrl+S: trigger save via custom event (ToolBar listens)
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    const mod = e.ctrlKey || e.metaKey
+
+    // Ctrl+N: New test plan
+    if (mod && e.key === 'n') {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('file:new'))
+      return
+    }
+
+    // Ctrl+O: Open test plan
+    if (mod && e.key === 'o') {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('file:open'))
+      return
+    }
+
+    // Ctrl+S: Save
+    if (mod && e.key === 's' && !e.shiftKey) {
       e.preventDefault()
       window.dispatchEvent(new CustomEvent('app:save'))
+      return
+    }
+
+    // Ctrl+Shift+S: Save As
+    if (mod && e.key === 's' && e.shiftKey) {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('app:saveas'))
       return
     }
 
@@ -27,8 +50,17 @@ export function useKeyboardShortcuts() {
       return
     }
 
-    // Ctrl+R / F5: run test
-    if ((e.ctrlKey && e.key === 'r') || e.key === 'F5') {
+    // F5 (no Ctrl): run test
+    if (e.key === 'F5') {
+      e.preventDefault()
+      if (!execution.isRunning) {
+        execution.startTest(testPlan.toJSON())
+      }
+      return
+    }
+
+    // Ctrl+R: run test
+    if (mod && e.key === 'r') {
       e.preventDefault()
       if (!execution.isRunning) {
         execution.startTest(testPlan.toJSON())
