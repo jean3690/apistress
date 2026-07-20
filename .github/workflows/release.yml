@@ -9,31 +9,77 @@ defaults:
     shell: bash
 
 jobs:
+  # ---- Validation: run CI checks before building ----
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Frontend type check
+        run: npx vue-tsc --noEmit
+
+      - name: Frontend build
+        run: npx vite build
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev
+
+      - name: Cargo check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Cargo clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Cargo test
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  # ---- Build native binaries ----
   build:
     name: Build ${{ matrix.target }}
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact: apistress_amd64
             bundles: deb,appimage
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            artifact: apistress_x64
             bundles: nsis
           - target: aarch64-pc-windows-msvc
             os: windows-latest
-            artifact: apistress_arm64_windows
             bundles: nsis
           - target: x86_64-apple-darwin
             os: macos-latest
-            artifact: apistress_amd64_mac
             bundles: dmg
           - target: aarch64-apple-darwin
             os: macos-latest
-            artifact: apistress_arm64_mac
             bundles: dmg
 
     runs-on: ${{ matrix.os }}
@@ -64,47 +110,33 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libjavascriptcoregtk-4.1-dev \
-            libsoup-3.0-dev
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v4
         id: tauri_build
         with:
           target: ${{ matrix.target }}
+          args: --bundles ${{ matrix.bundles }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Collect and rename artifacts
+      - name: List build artifacts
         run: |
-          mkdir -p release
-          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
-          for dir in deb appimage dmg nsis msi; do
-            if [ -d "$BUNDLE_DIR/$dir" ]; then
-              cp "$BUNDLE_DIR/$dir"/*.deb "$BUNDLE_DIR/$dir"/*.AppImage \
-                 "$BUNDLE_DIR/$dir"/*.dmg "$BUNDLE_DIR/$dir"/*.exe \
-                 "$BUNDLE_DIR/$dir"/*.msi release/ 2>/dev/null || true
-            fi
-          done
-          cd release
-          for f in *; do
-            [ -f "$f" ] || continue
-            ext="${f##*.}"
-            mv "$f" "${{ matrix.artifact }}.${ext}"
-          done
+          find src-tauri/target/${{ matrix.target }}/release/bundle -type f 2>/dev/null || echo "No bundle files found"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: release/*
+          name: artifact-${{ matrix.target }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/**/*
           if-no-files-found: ignore
 
+  # ---- Publish GitHub Release ----
   publish:
     name: Create GitHub Release
     needs: build
@@ -119,8 +151,17 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -laR artifacts/
+      - name: Rename artifacts with target prefix
+        run: |
+          cd artifacts
+          for f in *; do
+            [ -f "$f" ] || continue
+            # Extract the target from the filename path pattern
+            dir=$(dirname "$f")
+            base=$(basename "$f")
+            echo "Artifact: $base"
+          done
+          ls -la
 
       - uses: softprops/action-gh-release@v2
         with:
