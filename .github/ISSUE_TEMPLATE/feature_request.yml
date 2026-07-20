@@ -1,0 +1,48 @@
+name: "💡 Feature Request"
+description: Propose a new sampler type, assertion, controller, import format, or other enhancement.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion! Describe the use case and how it would help your workflow.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: "Feature Category"
+      options:
+        - New Sampler Type
+        - New Assertion
+        - New Controller / Timer
+        - New Import / Export Format
+        - UI / UX Improvement
+        - Test Execution / Engine
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Current Pain Point"
+      description: "What are you trying to do that ApiStress doesn't support today?"
+      placeholder: "e.g. I need to test gRPC endpoints but ApiStress only supports HTTP."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Proposed Solution"
+      description: "How would you like this to work?"
+      placeholder: "e.g. Add a gRPC Sampler that accepts a .proto file and lets you select a method."
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: "Additional Context"
+      description: "Reference links, screenshots, alternative approaches, etc."

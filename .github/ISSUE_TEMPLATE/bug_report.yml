@@ -1,0 +1,60 @@
+name: "🐞 Bug Report"
+description: Crashes, test execution failures, JMX import/export issues, UI bugs, or other reproducible problems.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill in as much detail as possible.
+        Sensitive information (passwords, tokens, URLs) should be redacted.
+
+  - type: input
+    id: version
+    attributes:
+      label: "ApiStress Version"
+      description: "Which version are you using?"
+      placeholder: "e.g. 0.4.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: "Operating System"
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Bug Description"
+      description: "Steps to reproduce, expected behavior, actual behavior."
+      placeholder: |
+        1. Open the app
+        2. Import a JMX file / create a test plan
+        3. Click Run
+        4. Expected: ...
+        5. Actual: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs & Screenshots"
+      description: "If applicable, attach screenshots or error messages from the app."
+      placeholder: "Paste any error output or describe what you see on screen."
+
+  - type: textarea
+    id: testplan
+    attributes:
+      label: "Test Plan (if relevant)"
+      description: "If the issue is related to a specific test plan configuration, describe the sampler type and settings, or attach an exported JMX/JSON file (with sensitive data redacted)."
+      placeholder: "e.g. HTTP Sampler with POST to https://example.com/api, 10 threads, 5 loops"
