@@ -11,8 +11,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  format:
+    name: Format Check (Prettier)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: npx prettier --check .
+
   frontend:
-    name: Frontend (Vue + TS)
+    name: Frontend (Vue + TS) - ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -39,7 +59,7 @@ jobs:
         run: npx vite build
 
   backend:
-    name: Backend (Rust)
+    name: Backend (Rust) - ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -60,8 +80,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
-            libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev
 
       - name: Cargo fmt
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
